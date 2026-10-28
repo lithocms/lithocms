@@ -37,11 +37,13 @@ afterAll(async () => {
   await tdb.stop();
 });
 
+// A fresh client address per sign-in keeps these tests clear of the rate limiter.
+let client = 0;
 const signIn = (body: object, host = ADMIN) =>
   app.inject({
     method: 'POST',
     url: '/api/auth/sign-in/email',
-    headers: { host, origin: `https://${host}`, 'x-forwarded-for': '198.51.100.7' },
+    headers: { host, origin: `https://${host}`, 'x-forwarded-for': `198.51.100.${++client}` },
     payload: body,
   });
 
@@ -81,6 +83,18 @@ describe('auth', () => {
       },
       sites: [{ id: siteId, name: 'Example', role: 'editor' }],
     });
+  });
+
+  it('never returns session tokens to page scripts', async () => {
+    const login = await signIn({ email: credentials.email, password: credentials.password });
+    const cookie = String(login.headers['set-cookie']).split(';')[0]!;
+    const token = decodeURIComponent(cookie.split('=')[1]!).split('.')[0]!;
+    for (const url of ['/api/auth/get-session', '/api/auth/list-sessions']) {
+      const res = await app.inject({ method: 'GET', url, headers: { host: ADMIN, cookie } });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).not.toContain(token);
+      expect(res.body).not.toContain('"token"');
+    }
   });
 
   it('rejects wrong passwords and anonymous /api/me', async () => {
