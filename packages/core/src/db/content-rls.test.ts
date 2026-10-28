@@ -91,6 +91,8 @@ describe('row-level security', () => {
       'collection_entries',
       'collections',
       'field_schemas',
+      'form_submissions',
+      'forms',
       'media',
       'menus',
       'post_terms',

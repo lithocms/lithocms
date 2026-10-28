@@ -74,7 +74,9 @@ let editor: Actor;
 
 const inSite = <T>(fn: (tx: Tx) => Promise<T>) => withSite(db, siteId, fn);
 const get = (path: string, search?: string) =>
-  inSite((tx) => renderPublic(tx, siteId, theme, { path, search, origin: 'https://example.com' }));
+  inSite((tx) =>
+    renderPublic(tx, siteId, theme, { path, search, origin: 'https://example.com', secret: 'x' }),
+  );
 const html = async (path: string, search?: string) => {
   const res = await get(path, search);
   if (res.status === 301) throw new Error(`redirected to ${res.location}`);

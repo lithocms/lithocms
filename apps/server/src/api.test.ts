@@ -252,6 +252,16 @@ describe('admin API', () => {
     expect((await call('editor', 'GET', a('/collections/nope'))).statusCode).toBe(404);
   });
 
+  it('lets only admins manage forms and read submissions', async () => {
+    const body = { fields: [{ key: 'email', label: 'E-posta', type: 'email', required: true }] };
+    expect((await call('editor', 'PUT', a('/forms/contact'), body)).statusCode).toBe(403);
+    const saved = await call('root', 'PUT', a('/forms/contact'), body);
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ key: 'contact', consentText: '' });
+    expect((await call('root', 'GET', a('/forms/contact/submissions'))).json()).toEqual([]);
+    expect((await call('editor', 'GET', a('/forms/contact/submissions'))).statusCode).toBe(403);
+  });
+
   it('lets only admins edit slots', async () => {
     const body = { html: '<div id="ad"></div>', enabled: true };
     expect((await call('editor', 'PUT', a('/slots/header-ad'), body)).statusCode).toBe(403);

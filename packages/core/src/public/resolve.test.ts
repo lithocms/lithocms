@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Actor } from '../content/audit.js';
@@ -114,10 +114,11 @@ describe('resolvePath', () => {
       return publishPost(tx, siteId, editor, p.id, new Date(Date.now() + 3_600_000));
     });
     expect((await resolve('/yakinda/')).type).toBe('not_found');
+    // The database clock decides, not this process's (they can drift in test containers).
     await inSite((tx) =>
       tx
         .update(posts)
-        .set({ publishedAt: new Date(Date.now() - 1000) })
+        .set({ publishedAt: sql`now() - interval '1 minute'` })
         .where(eq(posts.id, future.id)),
     );
     expect((await resolve('/yakinda/')).type).toBe('post');

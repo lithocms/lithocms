@@ -14,6 +14,7 @@ import type { Doc } from '@lithocms/content-format';
 import type { Term } from '../content/terms.js';
 import { entriesOf, listCollections } from '../content/collections.js';
 import { storedFieldValue, type Reference } from '../content/fields.js';
+import { formToken, listForms, renderForm } from '../content/forms.js';
 import { flatten, listMenus } from '../content/menus.js';
 import { renderContent } from '../content/posts.js';
 import { enabledSlots } from '../content/slots.js';
@@ -53,6 +54,10 @@ export interface PublicRequest {
   search?: string;
   /** Scheme and primary host, e.g. `https://example.com`. */
   origin: string;
+  /** Signs form tokens (time trap). */
+  secret: string;
+  /** Result of a form post, shown in that form after the redirect back. */
+  formStatus?: { key: string; status: 'sent' | 'error' };
 }
 
 export type PublicResponse =
@@ -123,7 +128,6 @@ export async function renderPublic(
     categories: { top: categories.top, all: categories.all },
     menus: await menuScope(tx, site, req.path),
     collections: await collectionScope(tx, site),
-    // TODO(phase-1): forms.
     seo: {
       title: page.seo.title,
       description: page.seo.description,
@@ -134,6 +138,7 @@ export async function renderPublic(
   };
   const seoImage = page.seo.image ?? logo;
   const slotHtml = await enabledSlots(tx, site.id);
+  const siteForms = await listForms(tx, site.id);
   const html = await theme.engine.render({
     template: page.template,
     scope,
@@ -147,7 +152,12 @@ export async function renderPublic(
         seoTags(site, { ...page.seo, image: seoImage }, canonical, req.origin, status === 404),
       // TODO(phase-3): core-rendered comment form.
       commentForm: () => '',
-      form: () => '',
+      form: (key) => {
+        const form = siteForms.find((f) => f.key === key);
+        if (!form) return '';
+        const status = req.formStatus?.key === key ? req.formStatus.status : undefined;
+        return renderForm(form, { locale: site.locale, token: formToken(req.secret), status });
+      },
       slot: (key) => slotHtml.get(key) ?? '',
       section: () => undefined,
     } satisfies RenderHooks,

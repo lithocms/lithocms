@@ -15,7 +15,7 @@ export const TEST_THEME: Record<string, string> = {
   'templates/index.liquid':
     '<h1>{{ site.name }}</h1>{% for p in posts %}<a href="{{ p.url }}">{{ p.title }}</a>{% endfor %}',
   'templates/post.liquid': '<h1>{{ post.title }}</h1>{{ post.content }}',
-  'templates/page.liquid': '<h1>{{ page.title }}</h1>{{ page.content }}',
+  'templates/page.liquid': '<h1>{{ page.title }}</h1>{{ page.content }}{% form "contact" %}',
   'templates/category.liquid': '<h1>{{ term.name }}</h1>',
   'templates/search.liquid': '<h1>{{ search.terms }}</h1>',
   'templates/404.liquid': '<h1>Not found</h1>',
