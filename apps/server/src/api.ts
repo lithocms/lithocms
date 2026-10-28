@@ -7,6 +7,7 @@ import {
   getPost,
   listMedia,
   listMenus,
+  listSlots,
   listPosts,
   listRevisions,
   listTerms,
@@ -22,6 +23,8 @@ import {
   publishPost,
   restoreRevision,
   schema,
+  SlotKey,
+  SlotUpdateInput,
   TermCreateInput,
   TermListQuery,
   TermUpdateInput,
@@ -29,6 +32,7 @@ import {
   unpublishPost,
   updateMedia,
   updateMenu,
+  updateSlot,
   updatePost,
   updateTerm,
   ValidationFailed,
@@ -66,6 +70,7 @@ const STATUS: Record<DomainError['code'], number> = {
 
 const Id = z.strictObject({ siteId: z.uuid(), id: z.uuid() });
 const Location = z.strictObject({ siteId: z.uuid(), location: MenuLocation });
+const Key = z.strictObject({ siteId: z.uuid(), key: SlotKey });
 const UploadQuery = z.strictObject({
   filename: z.string().min(1).max(255),
   alt: z.string().max(500).optional(),
@@ -227,6 +232,12 @@ export function registerApi(
         run(req, (tx, siteId, actor) =>
           updateMenu(tx, siteId, actor, req.params.location, req.body),
         ),
+      );
+
+      // slots: raw HTML, admins only
+      api.get('/slots', (req) => run(req, (tx, siteId) => listSlots(tx, siteId)));
+      api.put('/slots/:key', { schema: { params: Key, body: SlotUpdateInput } }, (req) =>
+        run(req, (tx, siteId, actor) => updateSlot(tx, siteId, actor, req.params.key, req.body)),
       );
 
       done();

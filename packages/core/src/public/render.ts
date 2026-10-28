@@ -12,6 +12,7 @@ import { and, asc, count, desc, eq, inArray, like, or, sql, type SQL } from 'dri
 import type { PostRow } from '../content/posts.js';
 import type { Term } from '../content/terms.js';
 import { flatten, listMenus } from '../content/menus.js';
+import { enabledSlots } from '../content/slots.js';
 import type { Tx } from '../db/client.js';
 import { posts, postTerms, terms, users, type MenuItem } from '../db/schema.js';
 import { mediaByIds, mediaUrl, type Media } from '../media/media.js';
@@ -109,7 +110,7 @@ export async function renderPublic(
     request: { path: req.path, page_type: page.pageType, query: req.search ?? '' },
     categories: { top: categories.top, all: categories.all },
     menus: await menuScope(tx, site, req.path),
-    // TODO(phase-1): collections, forms and slots.
+    // TODO(phase-1): collections and forms.
     collections: {},
     seo: {
       title: page.seo.title,
@@ -120,6 +121,7 @@ export async function renderPublic(
     ...page.scope,
   };
   const seoImage = page.seo.image ?? logo;
+  const slotHtml = await enabledSlots(tx, site.id);
   const html = await theme.engine.render({
     template: page.template,
     scope,
@@ -134,7 +136,7 @@ export async function renderPublic(
       // TODO(phase-3): core-rendered comment form.
       commentForm: () => '',
       form: () => '',
-      slot: () => '',
+      slot: (key) => slotHtml.get(key) ?? '',
       section: () => undefined,
     } satisfies RenderHooks,
   });
