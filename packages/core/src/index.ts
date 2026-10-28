@@ -16,3 +16,4 @@ export { createDiskStore, type MediaStore } from './media/store.js';
 export * from './public/permalinks.js';
 export * from './public/resolve.js';
 export * from './themes/registry.js';
+export * from './public/render.js';

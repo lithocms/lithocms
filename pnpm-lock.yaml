@@ -196,6 +196,9 @@ importers:
       '@lithocms/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@lithocms/theme-engine':
+        specifier: workspace:*
+        version: link:../../packages/theme-engine
       '@node-rs/argon2':
         specifier: ^2.2.2
         version: 2.2.2
@@ -211,6 +214,9 @@ importers:
       fastify-type-provider-zod:
         specifier: ^7.0.0
         version: 7.0.0(@fastify/swagger@9.9.2)(fastify@5.12.7)(openapi-types@12.1.3)(zod@4.6.7)
+      pino:
+        specifier: ^10.4.0
+        version: 10.4.0
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -270,6 +276,9 @@ importers:
       '@lithocms/content-format':
         specifier: workspace:*
         version: link:../content-format
+      '@lithocms/theme-engine':
+        specifier: workspace:*
+        version: link:../theme-engine
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)

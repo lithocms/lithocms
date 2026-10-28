@@ -15,11 +15,13 @@
   "dependencies": {
     "@better-auth/passkey": "^1.7.14",
     "@lithocms/core": "workspace:*",
+    "@lithocms/theme-engine": "workspace:*",
     "@node-rs/argon2": "^2.2.2",
     "better-auth": "^1.7.14",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",
     "fastify-type-provider-zod": "^7.0.0",
+    "pino": "^10.4.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

@@ -18,6 +18,8 @@ import {
 /** What the public router needs to know about a site. */
 export interface PublicSite {
   id: string;
+  name: string;
+  settings: Record<string, unknown>;
   locale: string;
   timezone: string;
   permalinks: Permalinks;
@@ -40,6 +42,8 @@ export async function loadPublicSite(tx: Tx, siteId: string): Promise<PublicSite
   const [row] = await tx
     .select({
       id: sites.id,
+      name: sites.name,
+      settings: sites.settings,
       locale: sites.locale,
       timezone: sites.timezone,
       permalinks: sites.permalinks,

@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDiskStore } from '@lithocms/core';
 import { tmpdir } from 'node:os';
 import { buildApp } from './app.js';
+import { NO_THEMES, testThemes } from './testing/themes.js';
 import { createAuth } from './auth.js';
 import { createSiteResolver, type SiteResolver } from './sites.js';
 
@@ -15,6 +16,7 @@ let pool: Pool;
 let sites: SiteResolver;
 let app: FastifyInstance;
 let siteId: string;
+let owner: ReturnType<typeof createDb>;
 const adminUrl = new URL('https://admin.example.net');
 const secret = 'test-secret-test-secret-test-secret!';
 
@@ -22,6 +24,7 @@ beforeAll(async () => {
   tdb = await startTestDatabase();
   await runMigrations(tdb.ownerUrl);
   ({ db, pool } = createDb(tdb.appUrl));
+  owner = createDb(tdb.ownerUrl);
   const [site] = await db.insert(schema.sites).values({ name: 'Example' }).returning();
   siteId = site!.id;
   await db.insert(schema.siteDomains).values([
@@ -36,6 +39,7 @@ beforeAll(async () => {
     auth: createAuth({ db, adminUrl, secret }),
     secret,
     store: createDiskStore(tmpdir()),
+    themes: await testThemes(owner.db),
     logLevel: 'silent',
   });
 });
@@ -43,20 +47,28 @@ beforeAll(async () => {
 afterAll(async () => {
   await app.close();
   await pool.end();
+  await owner.pool.end();
   await tdb.stop();
 });
 
 const get = (host: string, url = '/') => app.inject({ method: 'GET', url, headers: { host } });
 
 describe('host routing', () => {
-  it.each(['example.com', 'www.example.com', 'EXAMPLE.com:8080', 'example.com.'])(
-    'resolves %s to its site',
+  it.each(['example.com', 'EXAMPLE.com:8080', 'example.com.'])(
+    'renders %s with the site theme',
     async (host) => {
       const res = await get(host);
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ site: { id: siteId, name: 'Example' } });
+      expect(res.headers['content-type']).toBe('text/html; charset=utf-8');
+      expect(res.body).toContain('<h1>Example</h1>');
     },
   );
+
+  it.each(['www.example.com'])('redirects %s to the primary domain', async (host) => {
+    const res = await get(host, '/kategori/x/?a=1');
+    expect(res.statusCode).toBe(301);
+    expect(res.headers.location).toBe('https://example.com/kategori/x/?a=1');
+  });
 
   it('returns 404 for unknown hosts', async () => {
     const res = await get('evil.example');
@@ -64,9 +76,8 @@ describe('host routing', () => {
     expect(res.json()).toEqual({ error: 'unknown_host' });
   });
 
-  it('serves the admin origin without a site', async () => {
-    const res = await get('admin.example.net');
-    expect(res.json()).toEqual({ admin: true });
+  it('does not render themes on the admin origin', async () => {
+    expect((await get('admin.example.net')).statusCode).toBe(404);
   });
 
   it.each([
@@ -83,7 +94,7 @@ describe('host routing', () => {
     await db.insert(schema.siteDomains).values({ domain: 'new.example.com', siteId });
     expect((await get('new.example.com')).statusCode).toBe(404);
     await sites.refresh();
-    expect((await get('new.example.com')).statusCode).toBe(200);
+    expect((await get('new.example.com')).statusCode).toBe(301);
   });
 });
 
@@ -105,6 +116,7 @@ describe('health', () => {
       auth,
       secret,
       store: createDiskStore(tmpdir()),
+      themes: NO_THEMES,
       logLevel: 'silent',
     });
     const res = await unready.inject({ method: 'GET', url: '/readyz' });

@@ -5,7 +5,9 @@ import { randomUUID } from 'node:crypto';
 import { registerApi } from './api.js';
 import { registerAuthRoutes, type Auth } from './auth.js';
 import { registerMediaFiles } from './media-files.js';
+import { registerPublic } from './public.js';
 import { normalizeHost, type ResolvedSite, type SiteResolver } from './sites.js';
+import type { ThemeSet } from './themes.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -24,6 +26,8 @@ export interface AppOptions {
   secret: string;
   /** Uploaded media files. */
   store: MediaStore;
+  /** Themes that can render public pages. */
+  themes: ThemeSet;
   logLevel?: string;
 }
 
@@ -39,6 +43,7 @@ export function buildApp({
   auth,
   secret,
   store,
+  themes,
   logLevel = 'info',
 }: AppOptions): FastifyInstance {
   const app = Fastify({
@@ -91,11 +96,8 @@ export function buildApp({
   registerAuthRoutes(app, { auth, db });
   registerApi(app, { db, auth, secret, store });
   registerMediaFiles(app, store);
-
-  // TODO(phase-1): replace with theme rendering (site origins) and the admin SPA (admin origin).
-  app.get('/', (request) =>
-    request.site ? { site: { id: request.site.id, name: request.site.name } } : { admin: true },
-  );
+  // TODO(phase-1): the admin SPA on the admin origin.
+  registerPublic(app, { db, themes, adminUrl });
 
   return app;
 }
