@@ -92,11 +92,15 @@ export async function createPasswordUser(
   return { id: user.id };
 }
 
+/** Drops every `token` field, at any depth (sign-in, get-session, list-sessions, ...). */
 function withoutToken(body: unknown): unknown {
-  if (typeof body !== 'object' || body === null || !('token' in body)) return body;
-  const copy: Record<string, unknown> = { ...body };
-  delete copy.token;
-  return copy;
+  if (Array.isArray(body)) return body.map(withoutToken);
+  if (typeof body !== 'object' || body === null) return body;
+  return Object.fromEntries(
+    Object.entries(body)
+      .filter(([key]) => key !== 'token')
+      .map(([key, value]) => [key, withoutToken(value)]),
+  );
 }
 
 function toHeaders(raw: IncomingHttpHeaders): Headers {
