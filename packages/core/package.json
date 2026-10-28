@@ -13,6 +13,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./errors": {
+      "@lithocms/source": "./src/errors.ts",
+      "types": "./dist/errors.d.ts",
+      "default": "./dist/errors.js"
+    },
     "./testing": {
       "@lithocms/source": "./src/testing/postgres.ts"
     }
