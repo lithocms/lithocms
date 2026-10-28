@@ -1,3 +1,4 @@
+export * from './errors.js';
 export * from './from-markdown.js';
 export * from './render.js';
 export * from './sanitize.js';

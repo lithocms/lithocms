@@ -1,6 +1,6 @@
 // The content allowlist: every node, mark and attribute a post body may contain.
 // Node names follow TipTap so the admin editor emits this shape directly.
-import { ValidationFailed } from '@lithocms/core/errors';
+import { ContentFormatError } from './errors.js';
 import { z } from 'zod';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -231,7 +231,7 @@ const DocSchema = z.strictObject({ type: z.literal('doc'), content: z.array(Bloc
 export function parseDoc(input: unknown): Doc {
   const result = DocSchema.safeParse(input);
   if (result.success) return result.data;
-  throw new ValidationFailed(
+  throw new ContentFormatError(
     result.error.issues.map((i) => ({
       path: i.path.filter((p) => typeof p !== 'symbol'),
       message: i.message,

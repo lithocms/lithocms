@@ -1,4 +1,4 @@
-import { ValidationFailed, type Issue } from '@lithocms/core/errors';
+import { ContentFormatError, type Issue } from './errors.js';
 import type {
   Definition,
   FootnoteDefinition,
@@ -57,7 +57,7 @@ class Converter {
         content: this.blocks(note.children),
       });
     }
-    if (this.issues.length) throw new ValidationFailed(this.issues);
+    if (this.issues.length) throw new ContentFormatError(this.issues);
     return parseDoc({ type: 'doc', content });
   }
 
