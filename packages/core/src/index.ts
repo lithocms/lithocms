@@ -4,3 +4,4 @@ export * as schema from './db/schema.js';
 export { isBlockedAddress, safeFetch, SafeFetchError } from './net/safe-fetch.js';
 export type { SafeFetchOptions, SafeFetchResponse } from './net/safe-fetch.js';
 export * from './errors.js';
+export { can, type Capability } from './permissions.js';
