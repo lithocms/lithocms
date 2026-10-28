@@ -1,0 +1,22 @@
+{
+  "name": "@lithocms/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch --conditions=@lithocms/source src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@lithocms/core": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.7",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15"
+  }
+}
