@@ -7,6 +7,7 @@ import {
   categoryUrl,
   defaultPermalinks,
   matchPattern,
+  MAX_PATH_LENGTH,
   pageUrl,
   Permalinks,
   postUrl,
@@ -58,6 +59,7 @@ export async function resolvePath(
   search?: string,
 ): Promise<Resolved> {
   const p = site.permalinks;
+  if (path.length > MAX_PATH_LENGTH) return { type: 'not_found' };
   // WordPress style: every page URL ends with a slash.
   if (!path.endsWith('/') && !/\.[a-z0-9]+$/i.test(path)) {
     return { type: 'redirect', location: `${path}/` };
