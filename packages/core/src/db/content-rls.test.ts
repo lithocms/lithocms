@@ -93,6 +93,8 @@ describe('row-level security', () => {
       'posts',
       'revisions',
       'terms',
+      'theme_versions',
+      'themes',
     ]);
     for (const row of tenant) expect(row, row.table).toMatchObject({ rls: true });
     for (const row of tenant) expect(Number(row.policies), row.table).toBeGreaterThan(0);

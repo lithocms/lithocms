@@ -14,6 +14,7 @@ import {
   unique,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -42,6 +43,10 @@ export const sites = pgTable('sites', {
   permalinks: jsonb().$type<Record<string, string>>(),
   /** Title, tagline, logo, social links, comment policy, SEO defaults, CSP allowlist. */
   settings: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+  /** Null = the instance's default bundled theme. */
+  activeThemeVersionId: uuid().references((): AnyPgColumn => themeVersions.id, {
+    onDelete: 'set null',
+  }),
   status: text({ enum: ['active', 'maintenance', 'disabled'] })
     .notNull()
     .default('active'),
@@ -426,5 +431,70 @@ export const postTerms = pgTable(
       .where(sql`${t.isPrimary}`),
     index().on(t.termId),
     tenantPolicy('post_terms'),
+  ],
+).enableRLS();
+
+// --- themes ---------------------------------------------------------------------------------
+// Bundled themes have no site (visible to every site, written only by the owner role at
+// startup); themes made for a site (upload, MCP) belong to it.
+
+const sharedOrTenant = (table: string) => [
+  pgPolicy(`${table}_read`, {
+    for: 'select',
+    using: sql.raw(`site_id is null or ${TENANT_POLICY_CONDITION}`),
+  }),
+  pgPolicy(`${table}_write`, {
+    for: 'all',
+    using: sql.raw(TENANT_POLICY_CONDITION),
+    withCheck: sql.raw(TENANT_POLICY_CONDITION),
+  }),
+];
+
+export const THEME_ORIGINS = ['bundled', 'upload', 'mcp', 'git'] as const;
+
+export const themes = pgTable(
+  'themes',
+  {
+    id: id(),
+    siteId: uuid().references(() => sites.id, { onDelete: 'cascade' }),
+    slug: text().notNull(),
+    name: text().notNull(),
+    origin: text({ enum: THEME_ORIGINS }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique().on(t.siteId, t.slug).nullsNotDistinct(),
+    unique().on(t.siteId, t.id),
+    ...sharedOrTenant('themes'),
+  ],
+).enableRLS();
+
+export const THEME_VERSION_STATUSES = ['draft', 'valid', 'invalid', 'active', 'archived'] as const;
+
+export const themeVersions = pgTable(
+  'theme_versions',
+  {
+    id: id(),
+    siteId: uuid().references(() => sites.id, { onDelete: 'cascade' }),
+    themeId: uuid()
+      .notNull()
+      .references(() => themes.id, { onDelete: 'cascade' }),
+    version: text().notNull(),
+    status: text({ enum: THEME_VERSION_STATUSES }).notNull(),
+    /** theme.json */
+    manifest: jsonb().$type<Record<string, unknown>>().notNull(),
+    /** Where the files are: `bundled/<slug>` (shipped in the image) or a path on the themes volume. */
+    storagePath: text().notNull(),
+    validationReport: jsonb(),
+    createdBy: uuid().references(() => users.id, { onDelete: 'set null' }),
+    createdVia: text({ enum: CHANNELS }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique().on(t.themeId, t.version),
+    // A site's version must belong to that site's theme (FK checks bypass RLS). Bundled
+    // versions have no site, so only the plain theme FK applies to them.
+    foreignKey({ columns: [t.siteId, t.themeId], foreignColumns: [themes.siteId, themes.id] }),
+    ...sharedOrTenant('theme_versions'),
   ],
 ).enableRLS();
