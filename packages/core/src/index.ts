@@ -11,3 +11,5 @@ export { DocInput, MarkdownInput } from './content/input.js';
 export * from './content/posts.js';
 export * from './content/terms.js';
 export { slugify } from './content/slug.js';
+export * from './media/media.js';
+export { createDiskStore, type MediaStore } from './media/store.js';

@@ -2,10 +2,15 @@ import {
   createPost,
   createTerm,
   DomainError,
+  getMedia,
   getPost,
+  listMedia,
   listPosts,
   listRevisions,
   listTerms,
+  MAX_UPLOAD_BYTES,
+  MediaListQuery,
+  MediaUpdateInput,
   NotFound,
   PostCreateInput,
   PostListQuery,
@@ -18,12 +23,15 @@ import {
   TermUpdateInput,
   trashPost,
   unpublishPost,
+  updateMedia,
   updatePost,
   updateTerm,
   ValidationFailed,
+  uploadMedia,
   withSite,
   type Actor,
   type Db,
+  type MediaStore,
   type Tx,
 } from '@lithocms/core';
 import { and, eq } from 'drizzle-orm';
@@ -52,6 +60,11 @@ const STATUS: Record<DomainError['code'], number> = {
 };
 
 const Id = z.strictObject({ siteId: z.uuid(), id: z.uuid() });
+const UploadQuery = z.strictObject({
+  filename: z.string().min(1).max(255),
+  alt: z.string().max(500).optional(),
+  caption: z.string().max(2000).optional(),
+});
 const PublishBody = z.strictObject({
   at: z.iso
     .datetime({ offset: true })
@@ -62,7 +75,7 @@ const PublishBody = z.strictObject({
 /** Admin REST API, consumed by the admin SPA. Admin origin only (enforced in app.ts). */
 export function registerApi(
   app: FastifyInstance,
-  { db, auth, secret }: { db: Db; auth: Auth; secret: string },
+  { db, auth, secret, store }: { db: Db; auth: Auth; secret: string; store: MediaStore },
 ) {
   app.setValidatorCompiler(validatorCompiler);
   app.decorateRequest('actor', null);
@@ -154,6 +167,36 @@ export function registerApi(
       );
       api.post('/revisions/:id/restore', { schema: { params: Id } }, (req) =>
         run(req, (tx, siteId, actor) => restoreRevision(tx, siteId, actor, req.params.id)),
+      );
+
+      // media: the file is the raw request body; its type is sniffed, never taken from headers
+      scope.addContentTypeParser(
+        /^(?:application\/octet-stream|image\/[\w.+-]+)$/,
+        { parseAs: 'buffer', bodyLimit: MAX_UPLOAD_BYTES },
+        (_req, body, done) => {
+          done(null, body);
+        },
+      );
+      api.post('/media', { schema: { querystring: UploadQuery } }, async (req, reply) => {
+        if (!Buffer.isBuffer(req.body)) {
+          throw new ValidationFailed([
+            { path: ['file'], message: 'Send the file as the request body' },
+          ]);
+        }
+        const data = req.body;
+        const media = await run(req, (tx, siteId, actor) =>
+          uploadMedia(tx, store, siteId, actor, { data, ...req.query }),
+        );
+        return reply.code(201).send(media);
+      });
+      api.get('/media', { schema: { querystring: MediaListQuery } }, (req) =>
+        run(req, (tx, siteId) => listMedia(tx, siteId, req.query)),
+      );
+      api.get('/media/:id', { schema: { params: Id } }, (req) =>
+        run(req, (tx, siteId) => getMedia(tx, siteId, req.params.id)),
+      );
+      api.patch('/media/:id', { schema: { params: Id, body: MediaUpdateInput } }, (req) =>
+        run(req, (tx, siteId, actor) => updateMedia(tx, siteId, actor, req.params.id, req.body)),
       );
 
       // categories and tags

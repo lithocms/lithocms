@@ -1,9 +1,10 @@
-import type { Db } from '@lithocms/core';
+import type { Db, MediaStore } from '@lithocms/core';
 import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { registerApi } from './api.js';
 import { registerAuthRoutes, type Auth } from './auth.js';
+import { registerMediaFiles } from './media-files.js';
 import { normalizeHost, type ResolvedSite, type SiteResolver } from './sites.js';
 
 declare module 'fastify' {
@@ -21,6 +22,8 @@ export interface AppOptions {
   auth: Auth;
   /** Same secret as auth; also keys the audit log's IP hashes. */
   secret: string;
+  /** Uploaded media files. */
+  store: MediaStore;
   logLevel?: string;
 }
 
@@ -35,6 +38,7 @@ export function buildApp({
   adminUrl,
   auth,
   secret,
+  store,
   logLevel = 'info',
 }: AppOptions): FastifyInstance {
   const app = Fastify({
@@ -85,7 +89,8 @@ export function buildApp({
   });
 
   registerAuthRoutes(app, { auth, db });
-  registerApi(app, { db, auth, secret });
+  registerApi(app, { db, auth, secret, store });
+  registerMediaFiles(app, store);
 
   // TODO(phase-1): replace with theme rendering (site origins) and the admin SPA (admin origin).
   app.get('/', (request) =>

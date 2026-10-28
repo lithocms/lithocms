@@ -3,6 +3,8 @@ import { startTestDatabase, type TestDatabase } from '@lithocms/core/testing';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createDiskStore } from '@lithocms/core';
+import { tmpdir } from 'node:os';
 import { buildApp } from './app.js';
 import { createAuth, createPasswordUser, type Auth } from './auth.js';
 import { createSiteResolver } from './sites.js';
@@ -30,7 +32,15 @@ beforeAll(async () => {
   const user = await createPasswordUser(auth, { ...credentials, name: 'Editor' });
   await db.insert(schema.memberships).values({ userId: user.id, siteId, role: 'editor' });
   const sites = await createSiteResolver(db);
-  app = buildApp({ db, sites, adminUrl, auth, secret, logLevel: 'silent' });
+  app = buildApp({
+    db,
+    sites,
+    adminUrl,
+    auth,
+    secret,
+    store: createDiskStore(tmpdir()),
+    logLevel: 'silent',
+  });
 });
 
 afterAll(async () => {
