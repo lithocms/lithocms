@@ -1,5 +1,6 @@
 import { createDb, runMigrations } from '@lithocms/core';
 import { buildApp } from './app.js';
+import { createAuth } from './auth.js';
 import { loadConfig } from './config.js';
 import { createSiteResolver } from './sites.js';
 
@@ -10,7 +11,8 @@ const { db, pool } = createDb(config.DATABASE_URL);
 const app = buildApp({
   db,
   sites: await createSiteResolver(db),
-  adminDomain: config.ADMIN_DOMAIN,
+  adminUrl: config.ADMIN_URL,
+  auth: createAuth({ db, adminUrl: config.ADMIN_URL, secret: config.AUTH_SECRET }),
   logLevel: config.LOG_LEVEL,
 });
 
