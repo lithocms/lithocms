@@ -16,6 +16,7 @@ import { Conflict, Forbidden, NotFound, ValidationFailed } from '../errors.js';
 import { can } from '../permissions.js';
 import { audit, type Actor } from './audit.js';
 import { mediaByIds, mediaSrcset, mediaUrl } from '../media/media.js';
+import { loadPublicSite, postUrls } from '../public/resolve.js';
 import { DocInput } from './input.js';
 import { SLUG, slugify } from './slug.js';
 
@@ -474,9 +475,9 @@ async function checkMedia(tx: Tx, siteId: string, id: string | null): Promise<st
 }
 
 /**
- * Sanitized HTML for `content_html`. Links to other posts (`post:<id>`) use the default
- * WordPress-style URLs; images use the stored file and its WebP variants.
- * TODO(phase-1): site permalink settings, and re-rendering when a linked post's URL changes.
+ * Sanitized HTML for `content_html`. Links to other posts (`post:<id>`) use their current
+ * permalink; images use the stored file and its WebP variants.
+ * TODO(phase-1): re-render when a linked post's URL changes.
  */
 async function renderContent(tx: Tx, siteId: string, doc: Doc): Promise<string> {
   const json = JSON.stringify(doc);
@@ -484,23 +485,15 @@ async function renderContent(tx: Tx, siteId: string, doc: Doc): Promise<string> 
     ...new Set([...json.matchAll(/"mediaId":"([0-9a-f-]{36})"/g)].map((m) => m[1]!)),
   ]);
   const ids = [...new Set([...json.matchAll(/"post:([0-9a-f-]{36})"/g)].map((m) => m[1]!))];
-  const urls = new Map<string, string>();
-  if (ids.length) {
-    const { rows } = await tx.execute<{ id: string; path: string }>(sql`
-      with recursive up as (
-        select id as start, parent_id, slug, 1 as depth from posts
-        where id in (${sql.join(
-          ids.map((id) => sql`${id}`),
-          sql`, `,
-        )})
-        union all
-        select up.start, p.parent_id, p.slug, up.depth + 1
-        from posts p join up on p.id = up.parent_id where up.depth < 50
-      )
-      select start as id, string_agg(slug, '/' order by depth desc) as path
-      from up group by start`);
-    for (const r of rows) urls.set(r.id, `/${r.path}/`);
-  }
+  const linked = ids.length
+    ? await tx
+        .select()
+        .from(posts)
+        .where(and(eq(posts.siteId, siteId), inArray(posts.id, ids)))
+    : [];
+  const urls = linked.length
+    ? await postUrls(tx, await loadPublicSite(tx, siteId), linked)
+    : new Map<string, string>();
   return renderHtml(doc, {
     media: (id) => {
       const row = images.get(id);
