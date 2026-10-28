@@ -3,6 +3,12 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Actor } from '../content/audit.js';
 import { DocInput } from '../content/input.js';
+import {
+  CollectionCreateInput,
+  createCollection,
+  EntryInput,
+  upsertEntry,
+} from '../content/collections.js';
 import { MenuUpdateInput, updateMenu } from '../content/menus.js';
 import { updateSlot } from '../content/slots.js';
 import { Forbidden } from '../errors.js';
@@ -48,7 +54,9 @@ const files = {
     '<h1>{{ term.name }} ({{ term.post_count }})</h1>{% for a in term.ancestors %}<b>{{ a.name }}</b>{% endfor %}' +
     '{% for p in posts %}<a class="post" href="{{ p.url }}">{{ p.title }}</a>{% endfor %}',
   'templates/search.liquid':
-    '<h1>{{ search.terms }}</h1>{% slot "ad" %}{% slot "off" %}{% slot "none" %}',
+    '<h1>{{ search.terms }}</h1>{% slot "ad" %}{% slot "off" %}{% slot "none" %}' +
+    '{% for e in collections.faq.entries %}<dl><dt>{{ e.question }}</dt><dd>{{ e.answer }}</dd>' +
+    '{% if e.link %}<a href="{{ e.link.url }}">{{ e.link.title }}</a>{% endif %}</dl>{% endfor %}',
   'templates/404.liquid': '<h1>Not here</h1>',
 };
 const theme: PublicTheme = {
@@ -259,6 +267,43 @@ describe('renderPublic', () => {
       inSite((tx) => updateSlot(tx, siteId, editor, 'ad', { enabled: false })),
     ).rejects.toBeInstanceOf(Forbidden);
     expect(await html('/', 'x')).toContain('<h1>x</h1><ins class="ad">Ad</ins></body>');
+  });
+
+  it('renders published collection entries with resolved fields', async () => {
+    const doc = (text: string) => ({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    });
+    const uc = await inSite(
+      async (tx) => (await listPosts(tx, siteId, PostListQuery.parse({ query: 'Üç' }))).items[0]!,
+    );
+    await inSite(async (tx) => {
+      await createCollection(
+        tx,
+        siteId,
+        editor,
+        CollectionCreateInput.parse({
+          key: 'faq',
+          label: 'SSS',
+          fields: [
+            { key: 'question', label: 'Q', type: 'text', required: true },
+            { key: 'answer', label: 'A', type: 'richtext' },
+            { key: 'link', label: 'Link', type: 'reference' },
+          ],
+        }),
+      );
+      const add = (data: Record<string, unknown>, status: 'draft' | 'published', sort: number) =>
+        upsertEntry(tx, siteId, editor, 'faq', undefined, EntryInput.parse({ data, status, sort }));
+      await add({ question: 'İkinci <b>?', answer: doc('<i>x</i>') }, 'published', 2);
+      await add({ question: 'Birinci', link: { kind: 'post', id: uc.id } }, 'published', 1);
+      await add({ question: 'Taslak' }, 'draft', 0);
+    });
+    const page = await html('/', 'x');
+    expect(page).toContain(
+      '<dl><dt>Birinci</dt><dd></dd><a href="/uc/">Üç &lt;script&gt;alert(1)&lt;/script&gt;</a></dl>' +
+        '<dl><dt>İkinci &lt;b&gt;?</dt><dd><p>&lt;i&gt;x&lt;/i&gt;</p></dd></dl>',
+    );
+    expect(page).not.toContain('Taslak');
   });
 
   it('outputs theme tokens as CSS variables', async () => {

@@ -10,11 +10,23 @@ import {
 } from '@lithocms/theme-engine';
 import { and, asc, count, desc, eq, inArray, like, or, sql, type SQL } from 'drizzle-orm';
 import type { PostRow } from '../content/posts.js';
+import type { Doc } from '@lithocms/content-format';
 import type { Term } from '../content/terms.js';
+import { entriesOf, listCollections } from '../content/collections.js';
+import type { Reference } from '../content/fields.js';
 import { flatten, listMenus } from '../content/menus.js';
+import { renderContent } from '../content/posts.js';
 import { enabledSlots } from '../content/slots.js';
 import type { Tx } from '../db/client.js';
-import { posts, postTerms, terms, users, type MenuItem } from '../db/schema.js';
+import {
+  collectionEntries,
+  posts,
+  postTerms,
+  terms,
+  users,
+  type FieldDef,
+  type MenuItem,
+} from '../db/schema.js';
 import { mediaByIds, mediaUrl, type Media } from '../media/media.js';
 import { paginatedUrl, splitPagination } from './permalinks.js';
 import {
@@ -110,8 +122,8 @@ export async function renderPublic(
     request: { path: req.path, page_type: page.pageType, query: req.search ?? '' },
     categories: { top: categories.top, all: categories.all },
     menus: await menuScope(tx, site, req.path),
-    // TODO(phase-1): collections and forms.
-    collections: {},
+    collections: await collectionScope(tx, site),
+    // TODO(phase-1): forms.
     seo: {
       title: page.seo.title,
       description: page.seo.description,
@@ -590,6 +602,83 @@ function safeDecode(path: string): string {
   } catch {
     return path;
   }
+}
+
+const MAX_RENDERED_ENTRIES = 200;
+
+/** `collections.<key>.entries[]`: published entries with their declared fields resolved. */
+async function collectionScope(tx: Tx, site: PublicSite): Promise<Scope> {
+  const list = await listCollections(tx, site.id);
+  const entries = await Promise.all(
+    list.map((c) =>
+      entriesOf(tx, site.id, c, eq(collectionEntries.status, 'published')).limit(
+        MAX_RENDERED_ENTRIES,
+      ),
+    ),
+  );
+  const values = list.flatMap((c, i) =>
+    entries[i]!.flatMap((e) => c.fields.map((f) => ({ field: f, value: e.data[f.key] }))),
+  );
+  const refs = (kind: Reference['kind']) =>
+    values
+      .filter((v) => v.field.type === 'reference' && (v.value as Reference | null)?.kind === kind)
+      .map((v) => (v.value as Reference).id);
+  const imageIds = values.filter((v) => v.field.type === 'image').map((v) => v.value as string);
+  const [imageRows, livePosts, termRows] = await Promise.all([
+    images(tx, site.id, imageIds),
+    refs('post').length
+      ? tx
+          .select()
+          .from(posts)
+          .where(and(eq(posts.siteId, site.id), inArray(posts.id, refs('post')), isLive()))
+      : [],
+    refs('term').length
+      ? tx
+          .select()
+          .from(terms)
+          .where(and(eq(terms.siteId, site.id), inArray(terms.id, refs('term'))))
+      : [],
+  ]);
+  const imageById = new Map(imageRows.map((m) => [m.id, themeImage(m)]));
+  const postLinks = await postUrls(tx, site, livePosts);
+  const linked = new Map<string, Scope>([
+    ...livePosts.map((p): [string, Scope] => [p.id, { title: p.title, url: postLinks.get(p.id) }]),
+    ...termRows.map((t): [string, Scope] => [t.id, { title: t.name, url: termUrl(site, t) }]),
+  ]);
+
+  const field = async (f: FieldDef, value: unknown): Promise<unknown> => {
+    if (value === undefined || value === null) return null;
+    switch (f.type) {
+      case 'richtext':
+        return safe(await renderContent(tx, site.id, value as Doc));
+      case 'image':
+        return imageById.get(value as string) ?? null;
+      case 'reference':
+        return linked.get((value as Reference).id) ?? null;
+      default:
+        return value;
+    }
+  };
+  const result: Scope = {};
+  for (const [i, c] of list.entries()) {
+    result[c.key] = {
+      label: c.label,
+      entries: await Promise.all(
+        entries[i]!.map(async (e) => ({
+          id: e.id,
+          ...Object.fromEntries(
+            await Promise.all(
+              c.fields.map(async (f): Promise<[string, unknown]> => [
+                f.key,
+                await field(f, e.data[f.key]),
+              ]),
+            ),
+          ),
+        })),
+      ),
+    };
+  }
+  return result;
 }
 
 // --- SEO ------------------------------------------------------------------------------------
