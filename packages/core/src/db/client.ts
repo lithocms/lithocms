@@ -37,8 +37,4 @@ export function withSite<T>(db: Db, siteId: string, fn: (tx: Tx) => Promise<T>):
   });
 }
 
-/**
- * RLS condition for tenant tables: `CREATE POLICY … USING (<this>) WITH CHECK (<this>)`.
- * Outside `withSite` the setting is unset or '' → NULL → no rows match.
- */
-export const TENANT_POLICY_CONDITION = `site_id = nullif(current_setting('app.site_id', true), '')::uuid`;
+export { TENANT_POLICY_CONDITION } from './schema.js';
