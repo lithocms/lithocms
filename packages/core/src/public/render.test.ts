@@ -56,6 +56,7 @@ const files = {
     '{% for p in posts %}<a class="post" href="{{ p.url }}">{{ p.title }}</a>{% endfor %}',
   'templates/search.liquid':
     '<h1>{{ search.terms }}</h1>{% slot "ad" %}{% slot "off" %}{% slot "none" %}' +
+    '<p class="found">{{ search.results_count }}:{% for p in search.results %} {{ p.title }}{% endfor %}</p>' +
     '{% for e in collections.faq.entries %}<dl><dt>{{ e.question }}</dt><dd>{{ e.answer }}</dd>' +
     '{% if e.link %}<a href="{{ e.link.url }}">{{ e.link.title }}</a>{% endif %}</dl>{% endfor %}',
   'templates/404.liquid': '<h1>Not here</h1>',
@@ -257,6 +258,23 @@ describe('renderPublic', () => {
     expect(page).toContain('<meta name="robots" content="noindex">');
   });
 
+  it.each([
+    // Diacritics and Turkish casing do not matter; drafts are never found.
+    ['uc', '1: Üç &lt;script&gt;alert(1)&lt;/script&gt;'],
+    ['HERKES', '1: Üç &lt;script&gt;alert(1)&lt;/script&gt;'],
+    ['hakkimizda', '1: Hakkımızda'],
+    ['İKİ', '1: İki'],
+    ['taslak', '0:'],
+    ['', '0:'],
+    ['"bir iki" -', '0:'],
+  ])('searches live posts and pages for %j', async (query, found) => {
+    expect(await html('/', query)).toContain(`<p class="found">${found}</p>`);
+  });
+
+  it('has no pages past the last search result page', async () => {
+    expect((await get('/page/2/', 'herkes')).status).toBe(404);
+  });
+
   it('outputs enabled slots raw and only lets admins edit them', async () => {
     const admin: Actor = { ...editor, role: 'admin' };
     await inSite(async (tx) => {
@@ -269,7 +287,7 @@ describe('renderPublic', () => {
     await expect(
       inSite((tx) => updateSlot(tx, siteId, editor, 'ad', { enabled: false })),
     ).rejects.toBeInstanceOf(Forbidden);
-    expect(await html('/', 'x')).toContain('<h1>x</h1><ins class="ad">Ad</ins></body>');
+    expect(await html('/', 'x')).toContain('<h1>x</h1><ins class="ad">Ad</ins><p class="found">');
   });
 
   it('renders published collection entries with resolved fields', async () => {
