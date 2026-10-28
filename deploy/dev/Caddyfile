@@ -1,0 +1,8 @@
+# Dev only: plain HTTP on :80 (published as localhost:8080). Production uses on-demand TLS.
+{
+	auto_https off
+}
+
+:80 {
+	reverse_proxy app:3000
+}
