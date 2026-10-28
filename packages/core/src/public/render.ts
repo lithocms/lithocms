@@ -13,7 +13,7 @@ import type { PostRow } from '../content/posts.js';
 import type { Doc } from '@lithocms/content-format';
 import type { Term } from '../content/terms.js';
 import { entriesOf, listCollections } from '../content/collections.js';
-import type { Reference } from '../content/fields.js';
+import { storedFieldValue, type Reference } from '../content/fields.js';
 import { flatten, listMenus } from '../content/menus.js';
 import { renderContent } from '../content/posts.js';
 import { enabledSlots } from '../content/slots.js';
@@ -616,14 +616,21 @@ async function collectionScope(tx: Tx, site: PublicSite): Promise<Scope> {
       ),
     ),
   );
-  const values = list.flatMap((c, i) =>
-    entries[i]!.flatMap((e) => c.fields.map((f) => ({ field: f, value: e.data[f.key] }))),
+  // Re-checked against the current field types: entries are only validated when saved.
+  const cleaned = list.map((c, i) =>
+    entries[i]!.map((e) => ({
+      id: e.id,
+      values: c.fields.map((f) => ({ field: f, value: storedFieldValue(f, e.data[f.key]) })),
+    })),
   );
+  const values = cleaned.flat().flatMap((e) => e.values);
   const refs = (kind: Reference['kind']) =>
     values
       .filter((v) => v.field.type === 'reference' && (v.value as Reference | null)?.kind === kind)
       .map((v) => (v.value as Reference).id);
-  const imageIds = values.filter((v) => v.field.type === 'image').map((v) => v.value as string);
+  const imageIds = values
+    .filter((v) => v.field.type === 'image' && v.value !== null)
+    .map((v) => v.value as string);
   const [imageRows, livePosts, termRows] = await Promise.all([
     images(tx, site.id, imageIds),
     refs('post').length
@@ -647,7 +654,7 @@ async function collectionScope(tx: Tx, site: PublicSite): Promise<Scope> {
   ]);
 
   const field = async (f: FieldDef, value: unknown): Promise<unknown> => {
-    if (value === undefined || value === null) return null;
+    if (value === null) return null;
     switch (f.type) {
       case 'richtext':
         return safe(await renderContent(tx, site.id, value as Doc));
@@ -664,13 +671,13 @@ async function collectionScope(tx: Tx, site: PublicSite): Promise<Scope> {
     result[c.key] = {
       label: c.label,
       entries: await Promise.all(
-        entries[i]!.map(async (e) => ({
+        cleaned[i]!.map(async (e) => ({
           id: e.id,
           ...Object.fromEntries(
             await Promise.all(
-              c.fields.map(async (f): Promise<[string, unknown]> => [
-                f.key,
-                await field(f, e.data[f.key]),
+              e.values.map(async (v): Promise<[string, unknown]> => [
+                v.field.key,
+                await field(v.field, v.value),
               ]),
             ),
           ),
