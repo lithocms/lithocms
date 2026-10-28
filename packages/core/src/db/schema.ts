@@ -38,6 +38,10 @@ export const sites = pgTable('sites', {
   name: text().notNull(),
   locale: text().notNull().default('en'),
   timezone: text().notNull().default('UTC'),
+  /** URL patterns (`Permalinks`); null = the defaults for the site's locale. */
+  permalinks: jsonb().$type<Record<string, string>>(),
+  /** Title, tagline, logo, social links, comment policy, SEO defaults, CSP allowlist. */
+  settings: jsonb().$type<Record<string, unknown>>().notNull().default({}),
   status: text({ enum: ['active', 'maintenance', 'disabled'] })
     .notNull()
     .default('active'),

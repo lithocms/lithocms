@@ -13,3 +13,5 @@ export * from './content/terms.js';
 export { slugify } from './content/slug.js';
 export * from './media/media.js';
 export { createDiskStore, type MediaStore } from './media/store.js';
+export * from './public/permalinks.js';
+export * from './public/resolve.js';
