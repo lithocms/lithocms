@@ -9,6 +9,7 @@ import { createSiteResolver } from './sites.js';
 
 const ADMIN = 'admin.example.net';
 const adminUrl = new URL(`https://${ADMIN}`);
+const secret = 'test-secret-test-secret-test-secret!';
 const credentials = { email: 'Editor@Example.com', password: 'correct horse battery' };
 
 let tdb: TestDatabase;
@@ -25,10 +26,11 @@ beforeAll(async () => {
   const [site] = await db.insert(schema.sites).values({ name: 'Example' }).returning();
   siteId = site!.id;
   await db.insert(schema.siteDomains).values({ domain: 'example.com', siteId, isPrimary: true });
-  auth = createAuth({ db, adminUrl, secret: 'test-secret-test-secret-test-secret!' });
+  auth = createAuth({ db, adminUrl, secret });
   const user = await createPasswordUser(auth, { ...credentials, name: 'Editor' });
   await db.insert(schema.memberships).values({ userId: user.id, siteId, role: 'editor' });
-  app = buildApp({ db, sites: await createSiteResolver(db), adminUrl, auth, logLevel: 'silent' });
+  const sites = await createSiteResolver(db);
+  app = buildApp({ db, sites, adminUrl, auth, secret, logLevel: 'silent' });
 });
 
 afterAll(async () => {

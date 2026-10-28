@@ -13,6 +13,7 @@ const app = buildApp({
   sites: await createSiteResolver(db),
   adminUrl: config.ADMIN_URL,
   auth: createAuth({ db, adminUrl: config.ADMIN_URL, secret: config.AUTH_SECRET }),
+  secret: config.AUTH_SECRET,
   logLevel: config.LOG_LEVEL,
 });
 

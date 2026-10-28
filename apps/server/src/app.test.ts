@@ -32,6 +32,7 @@ beforeAll(async () => {
     sites,
     adminUrl,
     auth: createAuth({ db, adminUrl, secret }),
+    secret,
     logLevel: 'silent',
   });
 });
@@ -94,7 +95,7 @@ describe('health', () => {
     const down = createDb(tdb.appUrl);
     await down.pool.end();
     const auth = createAuth({ db: down.db, adminUrl, secret });
-    const unready = buildApp({ db: down.db, sites, adminUrl, auth, logLevel: 'silent' });
+    const unready = buildApp({ db: down.db, sites, adminUrl, auth, secret, logLevel: 'silent' });
     const res = await unready.inject({ method: 'GET', url: '/readyz' });
     expect(res.statusCode).toBe(503);
     await unready.close();
