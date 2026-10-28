@@ -156,7 +156,11 @@ export async function renderPublic(
         const form = siteForms.find((f) => f.key === key);
         if (!form) return '';
         const status = req.formStatus?.key === key ? req.formStatus.status : undefined;
-        return renderForm(form, { locale: site.locale, token: formToken(req.secret), status });
+        return renderForm(form, {
+          locale: site.locale,
+          token: formToken(req.secret, { siteId: site.id, key }),
+          status,
+        });
       },
       slot: (key) => slotHtml.get(key) ?? '',
       section: () => undefined,

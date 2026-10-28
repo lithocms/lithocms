@@ -1,4 +1,5 @@
 import {
+  assertFormManager,
   CollectionCreateInput,
   CollectionKey,
   CollectionUpdateInput,
@@ -315,9 +316,17 @@ export function registerApi(
       );
 
       // forms and their submissions (admins)
-      api.get('/forms', (req) => run(req, (tx, siteId) => listForms(tx, siteId)));
+      api.get('/forms', (req) =>
+        run(req, (tx, siteId, actor) => {
+          assertFormManager(actor);
+          return listForms(tx, siteId);
+        }),
+      );
       api.get('/forms/:key', { schema: { params: FormParams } }, (req) =>
-        run(req, (tx, siteId) => getForm(tx, siteId, req.params.key)),
+        run(req, (tx, siteId, actor) => {
+          assertFormManager(actor);
+          return getForm(tx, siteId, req.params.key);
+        }),
       );
       api.put('/forms/:key', { schema: { params: FormParams, body: FormUpsertInput } }, (req) =>
         run(req, (tx, siteId, actor) => upsertForm(tx, siteId, actor, req.params.key, req.body)),
