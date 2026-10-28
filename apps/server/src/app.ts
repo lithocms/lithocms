@@ -43,7 +43,14 @@ export function buildApp({
       return;
     }
     const site = sites.resolve(host);
-    if (!site) return reply.code(404).send({ error: 'unknown_host' });
+    // A disabled site is indistinguishable from an unknown host.
+    if (!site || site.status === 'disabled') {
+      return reply.code(404).send({ error: 'unknown_host' });
+    }
+    // TODO(phase-1): theme-rendered maintenance page; let logged-in admins preview.
+    if (site.status === 'maintenance') {
+      return reply.code(503).header('retry-after', '3600').send({ error: 'maintenance' });
+    }
     request.site = site;
     request.log = request.log.child({ siteId: site.id });
   });

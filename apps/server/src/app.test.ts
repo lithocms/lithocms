@@ -56,6 +56,16 @@ describe('host routing', () => {
     expect(res.json()).toEqual({ admin: true });
   });
 
+  it.each([
+    ['disabled', 404],
+    ['maintenance', 503],
+  ] as const)('does not serve %s sites', async (status, code) => {
+    const [other] = await db.insert(schema.sites).values({ name: status, status }).returning();
+    await db.insert(schema.siteDomains).values({ domain: `${status}.example`, siteId: other!.id });
+    await sites.refresh();
+    expect((await get(`${status}.example`)).statusCode).toBe(code);
+  });
+
   it('picks up new domains on refresh', async () => {
     await db.insert(schema.siteDomains).values({ domain: 'new.example.com', siteId });
     expect((await get('new.example.com')).statusCode).toBe(404);
