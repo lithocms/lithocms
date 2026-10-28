@@ -7,6 +7,7 @@ import {
   CollectionCreateInput,
   createCollection,
   EntryInput,
+  updateCollection,
   upsertEntry,
 } from '../content/collections.js';
 import { MenuUpdateInput, updateMenu } from '../content/menus.js';
@@ -304,6 +305,28 @@ describe('renderPublic', () => {
         '<dl><dt>İkinci &lt;b&gt;?</dt><dd><p>&lt;i&gt;x&lt;/i&gt;</p></dd></dl>',
     );
     expect(page).not.toContain('Taslak');
+
+    // A field whose type changed: old values that do not fit the new type are not rendered.
+    await inSite(async (tx) => {
+      await upsertEntry(
+        tx,
+        siteId,
+        editor,
+        'faq',
+        undefined,
+        EntryInput.parse({ data: { question: 'javascript:alert(1)', link: null }, sort: 3 }),
+      );
+      await updateCollection(tx, siteId, editor, 'faq', {
+        fields: [
+          { key: 'question', label: 'Q', type: 'url' },
+          { key: 'answer', label: 'A', type: 'text' },
+          { key: 'link', label: 'Link', type: 'image' },
+        ],
+      });
+    });
+    const changed = await html('/', 'x');
+    expect(changed).not.toContain('javascript:');
+    expect(changed).toContain('<dl><dt></dt><dd></dd></dl>');
   });
 
   it('outputs theme tokens as CSS variables', async () => {

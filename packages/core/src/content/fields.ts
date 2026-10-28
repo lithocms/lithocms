@@ -70,6 +70,16 @@ function valueSchema(field: FieldDef): z.ZodType {
   }
 }
 
+/**
+ * A stored value checked against the field's current type, or null. Entries are only
+ * re-validated when saved, so a field whose type changed may hold a value of the old type.
+ */
+export function storedFieldValue(field: FieldDef, value: unknown): unknown {
+  if (value === undefined || value === null) return null;
+  const parsed = valueSchema(field).safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 /** Validates `data` against `fields`; unknown keys are rejected. */
 export function parseFieldData(fields: FieldDef[], data: unknown): Record<string, unknown> {
   const shape = Object.fromEntries(
