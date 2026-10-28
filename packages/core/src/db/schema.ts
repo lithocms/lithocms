@@ -460,6 +460,83 @@ export const menus = pgTable(
   (t) => [unique().on(t.siteId, t.location), tenantPolicy('menus')],
 ).enableRLS();
 
+// --- flexibility layer: field schemas and collections ---------------------------------------
+
+export const FIELD_TYPES = [
+  'text',
+  'richtext',
+  'number',
+  'select',
+  'image',
+  'url',
+  'date',
+  'boolean',
+  'reference',
+] as const;
+export type FieldType = (typeof FIELD_TYPES)[number];
+
+export interface FieldDef {
+  key: string;
+  label: string | Record<string, string>;
+  type: FieldType;
+  required?: boolean;
+  /** `select` only. */
+  options?: { value: string; label?: string | Record<string, string> }[];
+}
+
+export const fieldSchemas = pgTable(
+  'field_schemas',
+  {
+    id: id(),
+    siteId: siteRef(),
+    /** `term:category` | `term:tag` | `collection:<key>` */
+    target: text().notNull(),
+    fields: jsonb().$type<FieldDef[]>().notNull().default([]),
+    updatedAt: updatedAt(),
+  },
+  (t) => [unique().on(t.siteId, t.target), tenantPolicy('field_schemas')],
+).enableRLS();
+
+export const COLLECTION_SORT_MODES = ['manual', 'created_desc'] as const;
+
+export const collections = pgTable(
+  'collections',
+  {
+    id: id(),
+    siteId: siteRef(),
+    key: text().notNull(),
+    label: text().notNull(),
+    sortMode: text({ enum: COLLECTION_SORT_MODES }).notNull().default('manual'),
+    createdAt: createdAt(),
+  },
+  (t) => [unique().on(t.siteId, t.key), unique().on(t.siteId, t.id), tenantPolicy('collections')],
+).enableRLS();
+
+export const ENTRY_STATUSES = ['draft', 'published'] as const;
+
+export const collectionEntries = pgTable(
+  'collection_entries',
+  {
+    id: id(),
+    siteId: siteRef(),
+    collectionId: uuid().notNull(),
+    /** Validated against the collection's field schema. */
+    data: jsonb().$type<Record<string, unknown>>().notNull(),
+    sort: integer().notNull().default(0),
+    status: text({ enum: ENTRY_STATUSES }).notNull().default('published'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.siteId, t.collectionId],
+      foreignColumns: [collections.siteId, collections.id],
+    }).onDelete('cascade'),
+    index().on(t.collectionId, t.sort),
+    tenantPolicy('collection_entries'),
+  ],
+).enableRLS();
+
 // --- slots --------------------------------------------------------------------------------
 
 /** Admin-managed raw HTML for places the theme declares (ads, analytics, banners). */

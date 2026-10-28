@@ -1,10 +1,20 @@
 import {
+  CollectionCreateInput,
+  CollectionKey,
+  CollectionUpdateInput,
+  createCollection,
   createPost,
   createTerm,
+  deleteEntry,
   DomainError,
+  EntryInput,
+  EntryListQuery,
+  getCollection,
   getMedia,
   getMenu,
   getPost,
+  listCollections,
+  listEntries,
   listMedia,
   listMenus,
   listSlots,
@@ -30,6 +40,7 @@ import {
   TermUpdateInput,
   trashPost,
   unpublishPost,
+  updateCollection,
   updateMedia,
   updateMenu,
   updateSlot,
@@ -37,6 +48,7 @@ import {
   updateTerm,
   ValidationFailed,
   uploadMedia,
+  upsertEntry,
   withSite,
   type Actor,
   type Db,
@@ -71,6 +83,8 @@ const STATUS: Record<DomainError['code'], number> = {
 const Id = z.strictObject({ siteId: z.uuid(), id: z.uuid() });
 const Location = z.strictObject({ siteId: z.uuid(), location: MenuLocation });
 const Key = z.strictObject({ siteId: z.uuid(), key: SlotKey });
+const CollectionParams = z.strictObject({ siteId: z.uuid(), key: CollectionKey });
+const EntryParams = CollectionParams.extend({ id: z.uuid() });
 const UploadQuery = z.strictObject({
   filename: z.string().min(1).max(255),
   alt: z.string().max(500).optional(),
@@ -232,6 +246,62 @@ export function registerApi(
         run(req, (tx, siteId, actor) =>
           updateMenu(tx, siteId, actor, req.params.location, req.body),
         ),
+      );
+
+      // collections and their entries
+      api.get('/collections', (req) => run(req, (tx, siteId) => listCollections(tx, siteId)));
+      api.post('/collections', { schema: { body: CollectionCreateInput } }, async (req, reply) =>
+        reply
+          .code(201)
+          .send(
+            await run(req, (tx, siteId, actor) => createCollection(tx, siteId, actor, req.body)),
+          ),
+      );
+      api.get('/collections/:key', { schema: { params: CollectionParams } }, (req) =>
+        run(req, (tx, siteId) => getCollection(tx, siteId, req.params.key)),
+      );
+      api.patch(
+        '/collections/:key',
+        { schema: { params: CollectionParams, body: CollectionUpdateInput } },
+        (req) =>
+          run(req, (tx, siteId, actor) =>
+            updateCollection(tx, siteId, actor, req.params.key, req.body),
+          ),
+      );
+      api.get(
+        '/collections/:key/entries',
+        { schema: { params: CollectionParams, querystring: EntryListQuery } },
+        (req) => run(req, (tx, siteId) => listEntries(tx, siteId, req.params.key, req.query)),
+      );
+      api.post(
+        '/collections/:key/entries',
+        { schema: { params: CollectionParams, body: EntryInput } },
+        async (req, reply) =>
+          reply
+            .code(201)
+            .send(
+              await run(req, (tx, siteId, actor) =>
+                upsertEntry(tx, siteId, actor, req.params.key, undefined, req.body),
+              ),
+            ),
+      );
+      api.patch(
+        '/collections/:key/entries/:id',
+        { schema: { params: EntryParams, body: EntryInput } },
+        (req) =>
+          run(req, (tx, siteId, actor) =>
+            upsertEntry(tx, siteId, actor, req.params.key, req.params.id, req.body),
+          ),
+      );
+      api.delete(
+        '/collections/:key/entries/:id',
+        { schema: { params: EntryParams } },
+        async (req, reply) => {
+          await run(req, (tx, siteId, actor) =>
+            deleteEntry(tx, siteId, actor, req.params.key, req.params.id),
+          );
+          return reply.code(204).send();
+        },
       );
 
       // slots: raw HTML, admins only

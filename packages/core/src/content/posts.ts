@@ -479,7 +479,7 @@ async function checkMedia(tx: Tx, siteId: string, id: string | null): Promise<st
  * permalink; images use the stored file and its WebP variants.
  * TODO(phase-1): re-render when a linked post's URL changes.
  */
-async function renderContent(tx: Tx, siteId: string, doc: Doc): Promise<string> {
+export async function renderContent(tx: Tx, siteId: string, doc: Doc): Promise<string> {
   const json = JSON.stringify(doc);
   const images = await mediaByIds(tx, siteId, [
     ...new Set([...json.matchAll(/"mediaId":"([0-9a-f-]{36})"/g)].map((m) => m[1]!)),

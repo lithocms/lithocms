@@ -92,7 +92,7 @@ afterAll(async () => {
 
 function call(
   who: string | null,
-  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   url: string,
   payload?: object,
 ) {
@@ -221,6 +221,35 @@ describe('admin API', () => {
     });
     expect(bad.statusCode).toBe(400);
     expect((await call('editor', 'GET', a('/menus/Bad%20Key'))).statusCode).toBe(400);
+  });
+
+  it('manages collections and entries', async () => {
+    const created = await call('editor', 'POST', a('/collections'), {
+      key: 'faq',
+      label: 'SSS',
+      fields: [{ key: 'question', label: 'Soru', type: 'text', required: true }],
+    });
+    expect(created.statusCode).toBe(201);
+    const added = await call('editor', 'POST', a('/collections/faq/entries'), {
+      data: { question: 'Nasıl?' },
+    });
+    expect(added.statusCode).toBe(201);
+    const id = added.json<{ id: string }>().id;
+    const invalid = await call('editor', 'PATCH', a(`/collections/faq/entries/${id}`), {
+      data: { answer: 'x' },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect((await call('author', 'GET', a('/collections/faq/entries'))).json()).toMatchObject([
+      { id, data: { question: 'Nasıl?' } },
+    ]);
+    expect(
+      (await call('author', 'POST', a('/collections/faq/entries'), { data: { question: 'x' } }))
+        .statusCode,
+    ).toBe(403);
+    expect((await call('editor', 'DELETE', a(`/collections/faq/entries/${id}`))).statusCode).toBe(
+      204,
+    );
+    expect((await call('editor', 'GET', a('/collections/nope'))).statusCode).toBe(404);
   });
 
   it('lets only admins edit slots', async () => {

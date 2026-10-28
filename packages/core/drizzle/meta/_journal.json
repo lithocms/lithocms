@@ -57,6 +57,13 @@
       "when": 1793228054372,
       "tag": "0007_slots",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793228235844,
+      "tag": "0008_collections",
+      "breakpoints": true
     }
   ]
 }
