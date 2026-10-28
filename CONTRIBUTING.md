@@ -58,17 +58,24 @@ Handled by [release-please](https://github.com/googleapis/release-please) on `ma
 
 ## Development setup
 
-Requirements: Node.js (current LTS), pnpm, Docker.
+Requirements: Node.js 26 (current LTS), pnpm 12 (`npm i -g pnpm@12`), Docker.
+
+```bash
+pnpm dev              # postgres + server (hot reload) + caddy, all in Docker
+```
+
+Then open <http://site.localhost:8080> (a seeded dev site) and <http://admin.localhost:8080>.
+Postgres is on `127.0.0.1:5432` (owner `lithocms_owner`/`owner`, runtime `lithocms_app`/`app`).
+Reset everything with `docker compose -f compose.dev.yml down -v`.
+
+On the host, for tests and tooling:
 
 ```bash
 pnpm install
-pnpm dev              # server + admin + postgres
-pnpm test             # unit + integration (Testcontainers)
-pnpm test:e2e         # Playwright
+pnpm test             # unit + integration (Testcontainers, needs Docker)
 pnpm lint && pnpm typecheck
+pnpm db:generate      # migration from schema changes (packages/core/src/db/schema.ts)
 ```
-
-> The workspace is being bootstrapped; these commands land with the first milestone.
 
 ## Pull request checklist
 
