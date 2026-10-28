@@ -4,5 +4,5 @@
     "noEmit": false,
     "customConditions": []
   },
-  "exclude": ["src/**/*.test.ts", "src/dev-seed.ts"]
+  "exclude": ["src/**/*.test.ts", "src/dev-seed.ts", "src/testing"]
 }

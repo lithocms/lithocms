@@ -14,6 +14,18 @@ const Config = z.object({
   AUTH_SECRET: z.string().min(32),
   /** Uploaded media; a volume in production. */
   MEDIA_DIR: z.string().default('/data/media'),
+  /** Bundled themes, one folder per theme. */
+  THEMES_DIR: z.string().default('/app/themes'),
+  /** Bundled theme(s) for sites without an active theme, in order of preference. */
+  DEFAULT_THEME: z
+    .string()
+    .default('corporate')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
 });
 
 export type Config = z.infer<typeof Config>;

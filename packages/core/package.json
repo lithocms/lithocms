@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@lithocms/content-format": "workspace:*",
+    "@lithocms/theme-engine": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "pg": "^8.23.1",
     "sharp": "^0.35.5",

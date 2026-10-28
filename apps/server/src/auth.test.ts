@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDiskStore } from '@lithocms/core';
 import { tmpdir } from 'node:os';
 import { buildApp } from './app.js';
+import { NO_THEMES } from './testing/themes.js';
 import { createAuth, createPasswordUser, type Auth } from './auth.js';
 import { createSiteResolver } from './sites.js';
 
@@ -39,6 +40,7 @@ beforeAll(async () => {
     auth,
     secret,
     store: createDiskStore(tmpdir()),
+    themes: NO_THEMES,
     logLevel: 'silent',
   });
 });

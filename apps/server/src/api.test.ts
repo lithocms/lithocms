@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { buildApp } from './app.js';
+import { NO_THEMES } from './testing/themes.js';
 import { createAuth, createPasswordUser } from './auth.js';
 import { createSiteResolver } from './sites.js';
 
@@ -50,7 +51,16 @@ beforeAll(async () => {
   const auth = createAuth({ db, adminUrl, secret });
   const sites = await createSiteResolver(db);
   const store = createDiskStore(mediaDir);
-  app = buildApp({ db, sites, adminUrl, auth, secret, store, logLevel: 'silent' });
+  app = buildApp({
+    db,
+    sites,
+    adminUrl,
+    auth,
+    secret,
+    store,
+    themes: NO_THEMES,
+    logLevel: 'silent',
+  });
 
   const people: [string, Role | null, string, boolean][] = [
     ['editor', 'editor', siteA, false],
@@ -293,7 +303,9 @@ describe('media', () => {
   it('does not serve paths outside the media layout', async () => {
     for (const url of ['/media/../../etc/passwd', '/media/2026/10/x.jpg', '/media/%2e%2e/secret']) {
       const res = await app.inject({ method: 'GET', url, headers: { host: 'a.example' } });
-      expect(res.statusCode, url).toBe(404);
+      // Never a file: 404 from the media route, or a page (no theme here) after normalization.
+      expect([404, 503], url).toContain(res.statusCode);
+      expect(res.headers['content-type'], url).not.toMatch(/^image\//);
     }
   });
 });

@@ -115,3 +115,28 @@ export const SectionSchema = z.strictObject({
   max_blocks: z.int().min(1).max(50).optional(),
 });
 export type SectionSchema = z.infer<typeof SectionSchema>;
+
+type Tokens = z.infer<typeof Tokens>;
+
+function declarations(tokens: Tokens): string {
+  const vars: [string, string][] = [
+    ...Object.entries(tokens.colors ?? {}).map(([k, v]): [string, string] => [`color-${k}`, v]),
+    ...Object.entries(tokens.fonts ?? {}).map(([k, v]): [string, string] => [`font-${k}`, v]),
+    ...(['radius', 'spacing', 'content_width'] as const)
+      .filter((k) => tokens[k] !== undefined)
+      .map((k): [string, string] => [k.replace('_', '-'), tokens[k]!]),
+  ];
+  return vars.map(([k, v]) => `--${k.replace(/_/g, '-')}:${v};`).join('');
+}
+
+/**
+ * `theme.css_variables`: the manifest tokens as custom properties, with `dark_tokens` under
+ * `prefers-color-scheme: dark`. Safe inside `<style>` because token values are an allowlist.
+ */
+export function cssVariables(manifest: Pick<ThemeManifest, 'tokens' | 'dark_tokens'>): string {
+  const light = manifest.tokens ? `:root{${declarations(manifest.tokens)}}` : '';
+  const dark = manifest.dark_tokens
+    ? `@media (prefers-color-scheme: dark){:root{${declarations(manifest.dark_tokens)}}}`
+    : '';
+  return light + dark;
+}
