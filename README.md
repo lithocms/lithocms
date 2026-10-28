@@ -12,3 +12,7 @@ A self-hosted, AI-native CMS you install with one command and run with Claude.
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[AGPL-3.0](LICENSE)
