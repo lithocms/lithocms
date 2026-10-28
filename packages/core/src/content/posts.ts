@@ -18,6 +18,7 @@ import { audit, type Actor } from './audit.js';
 import { mediaByIds, mediaSrcset, mediaUrl } from '../media/media.js';
 import { loadPublicSite, postUrls } from '../public/resolve.js';
 import { DocInput } from './input.js';
+import { watchUrls } from './redirects.js';
 import { SLUG, slugify } from './slug.js';
 
 const Key = z.string().regex(/^[a-z0-9_-]{1,64}$/);
@@ -204,6 +205,7 @@ export async function updatePost(
 ): Promise<Post> {
   const current = await getPost(tx, siteId, id);
   assertCanEdit(actor, current);
+  const moved = await watchUrls(tx, siteId, id);
 
   const parentId = input.parentId === undefined ? current.parentId : input.parentId;
   if (input.parentId) await checkParent(tx, siteId, current.type, input.parentId, id);
@@ -245,6 +247,8 @@ export async function updatePost(
       input.primaryCategoryId === undefined ? current.primaryCategoryId : input.primaryCategoryId,
     );
   }
+  // Published URLs that changed (slug, parent, primary category) keep working.
+  await moved();
   await saveRevision(tx, siteId, actor, row!);
   await audit(tx, siteId, actor, {
     action: `${current.type}.update`,

@@ -16,6 +16,7 @@ import { entriesOf, listCollections } from '../content/collections.js';
 import { storedFieldValue, type Reference } from '../content/fields.js';
 import { formToken, listForms, renderForm } from '../content/forms.js';
 import { flatten, listMenus } from '../content/menus.js';
+import { hitRedirect } from '../content/redirects.js';
 import { renderContent } from '../content/posts.js';
 import { enabledSlots } from '../content/slots.js';
 import type { Tx } from '../db/client.js';
@@ -61,7 +62,9 @@ export interface PublicRequest {
 }
 
 export type PublicResponse =
-  { status: 200 | 404; html: string } | { status: 301; location: string };
+  | { status: 200 | 404 | 410; html: string }
+  /** `location` is a `/path` on this site or, for admin-made redirects, an absolute URL. */
+  | { status: 301 | 302; location: string };
 
 const DEFAULT_PAGE_SIZE = 10;
 const RTL = ['ar', 'he', 'fa', 'ur'];
@@ -97,13 +100,20 @@ export async function renderPublic(
   req: PublicRequest,
 ): Promise<PublicResponse> {
   const site = await loadPublicSite(tx, siteId);
-  const resolved = await resolvePath(tx, site, req.path, req.search);
+  // Redirects come first: an admin may point a live URL elsewhere.
+  const redirect = await hitRedirect(tx, siteId, req.path);
+  if (redirect && redirect.code !== 410) {
+    return { status: redirect.code as 301 | 302, location: redirect.to };
+  }
+  const resolved: Resolved = redirect
+    ? { type: 'not_found' }
+    : await resolvePath(tx, site, req.path, req.search);
   if (resolved.type === 'redirect') return { status: 301, location: resolved.location };
 
   const categories = await categoryTree(tx, site);
   const ctx: Ctx = { tx, site, theme, req, categories };
   const page = (await buildPage(ctx, resolved)) ?? notFound(site);
-  const status = page.pageType === '404' ? 404 : 200;
+  const status = page.pageType !== '404' ? 200 : redirect ? 410 : 404;
 
   const [logo] = await images(tx, site.id, [setting(site, 'logo')]);
   const canonical = page.seo.canonical ?? req.origin + req.path;
@@ -149,7 +159,7 @@ export async function renderPublic(
       headExtras: () => '',
       bodyExtras: () => '',
       seo: () =>
-        seoTags(site, { ...page.seo, image: seoImage }, canonical, req.origin, status === 404),
+        seoTags(site, { ...page.seo, image: seoImage }, canonical, req.origin, status !== 200),
       // TODO(phase-3): core-rendered comment form.
       commentForm: () => '',
       form: (key) => {

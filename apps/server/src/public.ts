@@ -104,8 +104,13 @@ export function registerPublic(
             : undefined,
       }),
     );
-    // Always absolute on the site's own origin.
-    if (res.status === 301) return reply.redirect(`${originOf(site)}${res.location}`, 301);
+    // Paths become absolute on the site's own origin.
+    if ('location' in res) {
+      const location = res.location.startsWith('/')
+        ? `${originOf(site)}${encodeURI(res.location).replace(/%25([0-9A-F]{2})/gi, '%$1')}`
+        : res.location;
+      return reply.redirect(location, res.status);
+    }
     return reply
       .code(res.status)
       .type('text/html; charset=utf-8')

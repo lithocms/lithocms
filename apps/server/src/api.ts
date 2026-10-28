@@ -1,12 +1,15 @@
 import {
   assertFormManager,
+  assertRedirectManager,
   CollectionCreateInput,
   CollectionKey,
   CollectionUpdateInput,
   createCollection,
   createPost,
+  createRedirect,
   createTerm,
   deleteEntry,
+  deleteRedirect,
   DomainError,
   EntryInput,
   EntryListQuery,
@@ -22,6 +25,7 @@ import {
   listForms,
   listMedia,
   listMenus,
+  listRedirects,
   listSlots,
   listSubmissions,
   listPosts,
@@ -37,6 +41,8 @@ import {
   PostListQuery,
   PostUpdateInput,
   publishPost,
+  RedirectInput,
+  RedirectListQuery,
   restoreRevision,
   schema,
   SlotKey,
@@ -54,6 +60,7 @@ import {
   updateSlot,
   updateSubmission,
   updatePost,
+  updateRedirect,
   updateTerm,
   ValidationFailed,
   uploadMedia,
@@ -349,6 +356,26 @@ export function registerApi(
           return reply.code(204).send();
         },
       );
+
+      // redirects (admins)
+      api.get('/redirects', { schema: { querystring: RedirectListQuery } }, (req) =>
+        run(req, (tx, siteId, actor) => {
+          assertRedirectManager(actor);
+          return listRedirects(tx, siteId, req.query);
+        }),
+      );
+      api.post('/redirects', { schema: { body: RedirectInput } }, async (req, reply) =>
+        reply
+          .code(201)
+          .send(await run(req, (tx, siteId, actor) => createRedirect(tx, siteId, actor, req.body))),
+      );
+      api.put('/redirects/:id', { schema: { params: Id, body: RedirectInput } }, (req) =>
+        run(req, (tx, siteId, actor) => updateRedirect(tx, siteId, actor, req.params.id, req.body)),
+      );
+      api.delete('/redirects/:id', { schema: { params: Id } }, async (req, reply) => {
+        await run(req, (tx, siteId, actor) => deleteRedirect(tx, siteId, actor, req.params.id));
+        return reply.code(204).send();
+      });
 
       // slots: raw HTML, admins only
       api.get('/slots', (req) => run(req, (tx, siteId) => listSlots(tx, siteId)));

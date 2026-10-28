@@ -97,6 +97,7 @@ describe('row-level security', () => {
       'menus',
       'post_terms',
       'posts',
+      'redirects',
       'revisions',
       'slots',
       'terms',
