@@ -221,9 +221,6 @@ importers:
 
   packages/content-format:
     dependencies:
-      '@lithocms/core':
-        specifier: workspace:*
-        version: link:../core
       hast-util-to-html:
         specifier: ^9.0.5
         version: 9.0.5
@@ -286,9 +283,6 @@ importers:
 
   packages/theme-engine:
     dependencies:
-      '@lithocms/core':
-        specifier: workspace:*
-        version: link:../core
       liquidjs:
         specifier: ^10.30.0
         version: 10.30.0

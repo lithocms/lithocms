@@ -1,4 +1,4 @@
-import { ValidationFailed } from '@lithocms/core/errors';
+import { ContentFormatError } from './errors.js';
 import { describe, expect, it } from 'vitest';
 import { markdownToDoc } from './from-markdown.js';
 import { parseDoc, type Doc } from './schema.js';
@@ -61,10 +61,10 @@ const reject = (md: string) => {
   try {
     markdownToDoc(md);
   } catch (err) {
-    expect(err).toBeInstanceOf(ValidationFailed);
-    return (err as ValidationFailed).message;
+    expect(err).toBeInstanceOf(ContentFormatError);
+    return (err as ContentFormatError).message;
   }
-  throw new Error('expected ValidationFailed');
+  throw new Error('expected ContentFormatError');
 };
 
 describe('markdownToDoc', () => {
@@ -206,6 +206,6 @@ describe('parseDoc', () => {
       { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '' }] }] },
     ],
   ])('rejects %s', (_name, input) => {
-    expect(() => parseDoc(input)).toThrow(ValidationFailed);
+    expect(() => parseDoc(input)).toThrow(ContentFormatError);
   });
 });
