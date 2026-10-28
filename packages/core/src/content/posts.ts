@@ -15,6 +15,7 @@ import {
 import { Conflict, Forbidden, NotFound, ValidationFailed } from '../errors.js';
 import { can } from '../permissions.js';
 import { audit, type Actor } from './audit.js';
+import { mediaByIds, mediaSrcset, mediaUrl } from '../media/media.js';
 import { DocInput } from './input.js';
 import { SLUG, slugify } from './slug.js';
 
@@ -44,6 +45,7 @@ const PostFields = z.strictObject({
   parentId: z.uuid().nullable(),
   termIds: z.array(z.uuid()).max(100),
   primaryCategoryId: z.uuid().nullable(),
+  featuredMediaId: z.uuid().nullable(),
   template: z
     .string()
     .regex(/^[a-z0-9._-]{1,64}$/)
@@ -169,9 +171,10 @@ export async function createPost(
       slug,
       parentId,
       content,
-      contentHtml: await renderContent(tx, content),
+      contentHtml: await renderContent(tx, siteId, content),
       excerpt: input.excerpt ?? '',
       authorId: actor.userId,
+      featuredMediaId: await checkMedia(tx, siteId, input.featuredMediaId ?? null),
       template: input.template ?? null,
       sections: input.sections ?? null,
       seo: input.seo ?? {},
@@ -217,12 +220,15 @@ export async function updatePost(
 
   const changes: Partial<typeof posts.$inferInsert> = {
     ...pick(input, ['title', 'excerpt', 'template', 'sections', 'seo', 'commentsOpen']),
+    ...(input.featuredMediaId !== undefined
+      ? { featuredMediaId: await checkMedia(tx, siteId, input.featuredMediaId) }
+      : {}),
     slug,
     parentId,
   };
   if (input.content) {
     changes.content = input.content;
-    changes.contentHtml = await renderContent(tx, input.content);
+    changes.contentHtml = await renderContent(tx, siteId, input.content);
   }
   const [row] = await tx
     .update(posts)
@@ -460,16 +466,24 @@ async function requireFreeSlug(...args: Parameters<typeof slugsLike>): Promise<s
   return slug;
 }
 
+async function checkMedia(tx: Tx, siteId: string, id: string | null): Promise<string | null> {
+  if (id && !(await mediaByIds(tx, siteId, [id])).size) {
+    throw new ValidationFailed([{ path: ['featuredMediaId'], message: 'Media not found' }]);
+  }
+  return id;
+}
+
 /**
  * Sanitized HTML for `content_html`. Links to other posts (`post:<id>`) use the default
- * WordPress-style URLs.
- * TODO(phase-1): site permalink settings, media lookups, and re-rendering when a linked
- * post's URL changes.
+ * WordPress-style URLs; images use the stored file and its WebP variants.
+ * TODO(phase-1): site permalink settings, and re-rendering when a linked post's URL changes.
  */
-async function renderContent(tx: Tx, doc: Doc): Promise<string> {
-  const ids = [
-    ...new Set([...JSON.stringify(doc).matchAll(/"post:([0-9a-f-]{36})"/g)].map((m) => m[1]!)),
-  ];
+async function renderContent(tx: Tx, siteId: string, doc: Doc): Promise<string> {
+  const json = JSON.stringify(doc);
+  const images = await mediaByIds(tx, siteId, [
+    ...new Set([...json.matchAll(/"mediaId":"([0-9a-f-]{36})"/g)].map((m) => m[1]!)),
+  ]);
+  const ids = [...new Set([...json.matchAll(/"post:([0-9a-f-]{36})"/g)].map((m) => m[1]!))];
   const urls = new Map<string, string>();
   if (ids.length) {
     const { rows } = await tx.execute<{ id: string; path: string }>(sql`
@@ -487,7 +501,20 @@ async function renderContent(tx: Tx, doc: Doc): Promise<string> {
       from up group by start`);
     for (const r of rows) urls.set(r.id, `/${r.path}/`);
   }
-  return renderHtml(doc, { media: () => undefined, postUrl: (id) => urls.get(id) });
+  return renderHtml(doc, {
+    media: (id) => {
+      const row = images.get(id);
+      return (
+        row && {
+          src: mediaUrl(row.path),
+          width: row.width,
+          height: row.height,
+          srcset: row.variants.length ? mediaSrcset(row) : undefined,
+        }
+      );
+    },
+    postUrl: (id) => urls.get(id),
+  });
 }
 
 function pick<T extends object, K extends keyof T>(obj: T, keys: K[]): Partial<Pick<T, K>> {

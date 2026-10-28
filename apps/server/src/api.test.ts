@@ -1,8 +1,19 @@
-import { createDb, runMigrations, schema, type Db, type Role } from '@lithocms/core';
+import {
+  createDb,
+  createDiskStore,
+  runMigrations,
+  schema,
+  type Db,
+  type Role,
+} from '@lithocms/core';
 import { startTestDatabase, type TestDatabase } from '@lithocms/core/testing';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import sharp from 'sharp';
 import { buildApp } from './app.js';
 import { createAuth, createPasswordUser } from './auth.js';
 import { createSiteResolver } from './sites.js';
@@ -18,6 +29,7 @@ let pool: Pool;
 let app: FastifyInstance;
 let siteA: string;
 let siteB: string;
+let mediaDir: string;
 const cookies: Record<string, string> = {};
 
 beforeAll(async () => {
@@ -30,9 +42,15 @@ beforeAll(async () => {
       .values([{ name: 'A' }, { name: 'B' }])
       .returning()
   ).map((s) => s.id) as [string, string];
+  await db.insert(schema.siteDomains).values([
+    { domain: 'a.example', siteId: siteA, isPrimary: true },
+    { domain: 'b.example', siteId: siteB, isPrimary: true },
+  ]);
+  mediaDir = await mkdtemp(join(tmpdir(), 'litho-api-media-'));
   const auth = createAuth({ db, adminUrl, secret });
   const sites = await createSiteResolver(db);
-  app = buildApp({ db, sites, adminUrl, auth, secret, logLevel: 'silent' });
+  const store = createDiskStore(mediaDir);
+  app = buildApp({ db, sites, adminUrl, auth, secret, store, logLevel: 'silent' });
 
   const people: [string, Role | null, string, boolean][] = [
     ['editor', 'editor', siteA, false],
@@ -59,6 +77,7 @@ afterAll(async () => {
   await app.close();
   await pool.end();
   await tdb.stop();
+  await rm(mediaDir, { recursive: true, force: true });
 });
 
 function call(who: string | null, method: 'GET' | 'POST' | 'PATCH', url: string, payload?: object) {
@@ -212,5 +231,69 @@ describe('admin API', () => {
       payload: { type: 'post', title: 'csrf' },
     });
     expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('media', () => {
+  const upload = (who: string, body: Buffer, type: string, query = 'filename=pic.jpg&alt=Pic') =>
+    app.inject({
+      method: 'POST',
+      url: a(`/media?${query}`),
+      headers: { host: ADMIN, origin: adminUrl.origin, cookie: cookies[who], 'content-type': type },
+      payload: body,
+    });
+
+  it('uploads raw bytes and sniffs the type', async () => {
+    const png = await sharp({
+      create: { width: 900, height: 300, channels: 3, background: '#000' },
+    })
+      .png()
+      .toBuffer();
+    const res = await upload('author', png, 'image/jpeg');
+    expect(res.statusCode).toBe(201);
+    const media = res.json<{ id: string; path: string; mime: string; variants: unknown[] }>();
+    expect(media).toMatchObject({ mime: 'image/png', alt: 'Pic', originalName: 'pic.jpg' });
+    expect(media.variants).toHaveLength(4);
+
+    const listed = await call('editor', 'GET', a('/media'));
+    expect(listed.json()).toMatchObject({ items: [{ id: media.id }] });
+
+    // Served on the site's own origin only.
+    const file = await app.inject({
+      method: 'GET',
+      url: `/media/${media.path}`,
+      headers: { host: 'a.example' },
+    });
+    expect(file.statusCode).toBe(200);
+    expect(file.headers).toMatchObject({
+      'content-type': 'image/png',
+      'x-content-type-options': 'nosniff',
+      'cache-control': 'public, max-age=31536000, immutable',
+    });
+    expect(file.rawPayload.subarray(1, 4).toString()).toBe('PNG');
+    for (const host of ['b.example', ADMIN]) {
+      const other = await app.inject({
+        method: 'GET',
+        url: `/media/${media.path}`,
+        headers: { host },
+      });
+      expect(other.statusCode, host).toBe(404);
+    }
+  });
+
+  it('rejects files that are not images, whatever the declared type', async () => {
+    const res = await upload('author', Buffer.from('<svg onload="alert(1)"/>'), 'image/svg+xml');
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'validation_failed', issues: [{ path: ['file'] }] });
+    expect(
+      (await upload('author', Buffer.from('x'), 'image/png', 'alt=no-filename')).statusCode,
+    ).toBe(400);
+  });
+
+  it('does not serve paths outside the media layout', async () => {
+    for (const url of ['/media/../../etc/passwd', '/media/2026/10/x.jpg', '/media/%2e%2e/secret']) {
+      const res = await app.inject({ method: 'GET', url, headers: { host: 'a.example' } });
+      expect(res.statusCode, url).toBe(404);
+    }
   });
 });

@@ -3,6 +3,8 @@ import { startTestDatabase, type TestDatabase } from '@lithocms/core/testing';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createDiskStore } from '@lithocms/core';
+import { tmpdir } from 'node:os';
 import { buildApp } from './app.js';
 import { createAuth } from './auth.js';
 import { createSiteResolver, type SiteResolver } from './sites.js';
@@ -33,6 +35,7 @@ beforeAll(async () => {
     adminUrl,
     auth: createAuth({ db, adminUrl, secret }),
     secret,
+    store: createDiskStore(tmpdir()),
     logLevel: 'silent',
   });
 });
@@ -95,7 +98,15 @@ describe('health', () => {
     const down = createDb(tdb.appUrl);
     await down.pool.end();
     const auth = createAuth({ db: down.db, adminUrl, secret });
-    const unready = buildApp({ db: down.db, sites, adminUrl, auth, secret, logLevel: 'silent' });
+    const unready = buildApp({
+      db: down.db,
+      sites,
+      adminUrl,
+      auth,
+      secret,
+      store: createDiskStore(tmpdir()),
+      logLevel: 'silent',
+    });
     const res = await unready.inject({ method: 'GET', url: '/readyz' });
     expect(res.statusCode).toBe(503);
     await unready.close();

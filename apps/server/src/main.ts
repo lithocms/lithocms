@@ -1,4 +1,4 @@
-import { createDb, runMigrations } from '@lithocms/core';
+import { createDb, createDiskStore, runMigrations } from '@lithocms/core';
 import { buildApp } from './app.js';
 import { createAuth } from './auth.js';
 import { loadConfig } from './config.js';
@@ -14,6 +14,7 @@ const app = buildApp({
   adminUrl: config.ADMIN_URL,
   auth: createAuth({ db, adminUrl: config.ADMIN_URL, secret: config.AUTH_SECRET }),
   secret: config.AUTH_SECRET,
+  store: createDiskStore(config.MEDIA_DIR),
   logLevel: config.LOG_LEVEL,
 });
 

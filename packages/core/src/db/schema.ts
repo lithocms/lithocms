@@ -230,6 +230,43 @@ const siteRef = () =>
     .notNull()
     .references(() => sites.id, { onDelete: 'cascade' });
 
+export interface MediaVariant {
+  width: number;
+  format: 'webp' | 'avif';
+  /** Relative to the site's media root, like `media.path`. */
+  path: string;
+}
+
+export const media = pgTable(
+  'media',
+  {
+    id: id(),
+    siteId: siteRef(),
+    /** `YYYY/MM/<uuid>.<ext>` under the site's media root; served at `/media/<path>`. */
+    path: text().notNull(),
+    originalName: text().notNull(),
+    /** Sniffed from the bytes, never taken from the client. */
+    mime: text().notNull(),
+    size: integer().notNull(),
+    width: integer().notNull(),
+    height: integer().notNull(),
+    alt: text().notNull().default(''),
+    caption: text().notNull().default(''),
+    variants: jsonb().$type<MediaVariant[]>().notNull().default([]),
+    /** Old URL (e.g. `/wp-content/uploads/...`) that keeps resolving after an import. */
+    legacyUrl: text(),
+    uploadedBy: uuid().references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique().on(t.siteId, t.id),
+    unique().on(t.siteId, t.path),
+    index().on(t.siteId, t.createdAt.desc()),
+    index().on(t.siteId, t.legacyUrl),
+    tenantPolicy('media'),
+  ],
+).enableRLS();
+
 export const POST_TYPES = ['post', 'page'] as const;
 export const POST_STATUSES = ['draft', 'scheduled', 'published', 'trash'] as const;
 export type PostStatus = (typeof POST_STATUSES)[number];
@@ -284,6 +321,10 @@ export const posts = pgTable(
     foreignKey({
       columns: [t.siteId, t.parentId],
       foreignColumns: [t.siteId, t.id],
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.siteId, t.featuredMediaId],
+      foreignColumns: [media.siteId, media.id],
     }).onDelete('restrict'),
     check('posts_page_parent', sql`${t.parentId} is null or ${t.type} = 'page'`),
     index().on(t.siteId, t.type, t.status, t.publishedAt.desc()),

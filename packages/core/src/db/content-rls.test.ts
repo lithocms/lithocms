@@ -88,6 +88,7 @@ describe('row-level security', () => {
     const tenant = rows.filter((r) => !INSTANCE_TABLES.includes(r.table));
     expect(tenant.map((r) => r.table)).toEqual([
       'audit_log',
+      'media',
       'post_terms',
       'posts',
       'revisions',

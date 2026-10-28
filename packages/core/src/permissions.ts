@@ -10,6 +10,8 @@ const MATRIX = {
   'post.write_own': ALL,
   'post.write_any': EDITOR,
   'post.publish': EDITOR,
+  // Authors add images to their own posts; managing the whole library needs an editor.
+  'media.upload': ALL,
   'comment.moderate': EDITOR,
   'media.manage': EDITOR,
   'menu.manage': EDITOR,

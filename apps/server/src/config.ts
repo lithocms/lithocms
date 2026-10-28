@@ -12,6 +12,8 @@ const Config = z.object({
   ADMIN_URL: z.url().transform((url) => new URL(url)),
   /** Signs sessions and encrypts auth secrets (2FA). Generate with `openssl rand -base64 32`. */
   AUTH_SECRET: z.string().min(32),
+  /** Uploaded media; a volume in production. */
+  MEDIA_DIR: z.string().default('/data/media'),
 });
 
 export type Config = z.infer<typeof Config>;
