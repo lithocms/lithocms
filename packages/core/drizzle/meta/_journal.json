@@ -43,6 +43,13 @@
       "when": 1793221568141,
       "tag": "0005_themes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793227618486,
+      "tag": "0006_menus",
+      "breakpoints": true
     }
   ]
 }

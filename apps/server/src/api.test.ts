@@ -90,7 +90,12 @@ afterAll(async () => {
   await rm(mediaDir, { recursive: true, force: true });
 });
 
-function call(who: string | null, method: 'GET' | 'POST' | 'PATCH', url: string, payload?: object) {
+function call(
+  who: string | null,
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
+  url: string,
+  payload?: object,
+) {
   return app.inject({
     method,
     url,
@@ -197,6 +202,25 @@ describe('admin API', () => {
     ).toBe(403);
     const list = await call('author', 'GET', a('/terms?taxonomy=category'));
     expect(list.json()).toMatchObject([{ name: 'Haberler' }]);
+  });
+
+  it('manages menus for editors only', async () => {
+    const items = [{ label: 'Ana sayfa', kind: 'url', url: '/' }];
+    const saved = await call('editor', 'PUT', a('/menus/primary'), { items });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({
+      location: 'primary',
+      items: [{ label: 'Ana sayfa', url: '/' }],
+    });
+    expect((await call('author', 'PUT', a('/menus/primary'), { items })).statusCode).toBe(403);
+    expect((await call('author', 'GET', a('/menus'))).json()).toMatchObject([
+      { location: 'primary' },
+    ]);
+    const bad = await call('editor', 'PUT', a('/menus/primary'), {
+      items: [{ label: 'x', kind: 'url', url: 'javascript:alert(1)' }],
+    });
+    expect(bad.statusCode).toBe(400);
+    expect((await call('editor', 'GET', a('/menus/Bad%20Key'))).statusCode).toBe(400);
   });
 
   it('hides other sites and their posts', async () => {

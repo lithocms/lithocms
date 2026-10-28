@@ -3,14 +3,18 @@ import {
   createTerm,
   DomainError,
   getMedia,
+  getMenu,
   getPost,
   listMedia,
+  listMenus,
   listPosts,
   listRevisions,
   listTerms,
   MAX_UPLOAD_BYTES,
   MediaListQuery,
   MediaUpdateInput,
+  MenuLocation,
+  MenuUpdateInput,
   NotFound,
   PostCreateInput,
   PostListQuery,
@@ -24,6 +28,7 @@ import {
   trashPost,
   unpublishPost,
   updateMedia,
+  updateMenu,
   updatePost,
   updateTerm,
   ValidationFailed,
@@ -60,6 +65,7 @@ const STATUS: Record<DomainError['code'], number> = {
 };
 
 const Id = z.strictObject({ siteId: z.uuid(), id: z.uuid() });
+const Location = z.strictObject({ siteId: z.uuid(), location: MenuLocation });
 const UploadQuery = z.strictObject({
   filename: z.string().min(1).max(255),
   alt: z.string().max(500).optional(),
@@ -210,6 +216,17 @@ export function registerApi(
       );
       api.patch('/terms/:id', { schema: { params: Id, body: TermUpdateInput } }, (req) =>
         run(req, (tx, siteId, actor) => updateTerm(tx, siteId, actor, req.params.id, req.body)),
+      );
+
+      // menus, one per theme location
+      api.get('/menus', (req) => run(req, (tx, siteId) => listMenus(tx, siteId)));
+      api.get('/menus/:location', { schema: { params: Location } }, (req) =>
+        run(req, (tx, siteId) => getMenu(tx, siteId, req.params.location)),
+      );
+      api.put('/menus/:location', { schema: { params: Location, body: MenuUpdateInput } }, (req) =>
+        run(req, (tx, siteId, actor) =>
+          updateMenu(tx, siteId, actor, req.params.location, req.body),
+        ),
       );
 
       done();

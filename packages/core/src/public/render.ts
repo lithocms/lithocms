@@ -11,8 +11,9 @@ import {
 import { and, asc, count, desc, eq, inArray, like, or, sql, type SQL } from 'drizzle-orm';
 import type { PostRow } from '../content/posts.js';
 import type { Term } from '../content/terms.js';
+import { flatten, listMenus } from '../content/menus.js';
 import type { Tx } from '../db/client.js';
-import { posts, postTerms, terms, users } from '../db/schema.js';
+import { posts, postTerms, terms, users, type MenuItem } from '../db/schema.js';
 import { mediaByIds, mediaUrl, type Media } from '../media/media.js';
 import { paginatedUrl, splitPagination } from './permalinks.js';
 import {
@@ -107,8 +108,8 @@ export async function renderPublic(
     },
     request: { path: req.path, page_type: page.pageType, query: req.search ?? '' },
     categories: { top: categories.top, all: categories.all },
-    // TODO(phase-1): menus, collections, forms and slots.
-    menus: {},
+    menus: await menuScope(tx, site, req.path),
+    // TODO(phase-1): collections, forms and slots.
     collections: {},
     seo: {
       title: page.seo.title,
@@ -540,6 +541,53 @@ export function themeImage(row: Media): ThemeImage {
       { width: row.width, url: mediaUrl(row.path) },
     ],
   };
+}
+
+/** `menus.<location>.items[]`: links to unpublished posts or deleted terms are left out. */
+async function menuScope(tx: Tx, site: PublicSite, path: string): Promise<Scope> {
+  const all = await listMenus(tx, site.id);
+  const items = all.flatMap((m) => flatten(m.items));
+  const refs = (kind: MenuItem['kind']) => [
+    ...new Set(items.filter((i) => i.kind === kind).map((i) => i.ref!)),
+  ];
+  const [postIds, termIds] = [refs('post'), refs('term')];
+  const [live, termRows] = await Promise.all([
+    postIds.length
+      ? tx
+          .select()
+          .from(posts)
+          .where(and(eq(posts.siteId, site.id), inArray(posts.id, postIds), isLive()))
+      : [],
+    termIds.length
+      ? tx
+          .select()
+          .from(terms)
+          .where(and(eq(terms.siteId, site.id), inArray(terms.id, termIds)))
+      : [],
+  ]);
+  const postLinks = await postUrls(tx, site, live);
+  const termLinks = new Map(termRows.map((t) => [t.id, termUrl(site, t)]));
+  const current = safeDecode(path);
+  const build = (list: MenuItem[]): Scope[] =>
+    list.flatMap((item) => {
+      const url =
+        item.kind === 'url'
+          ? item.url
+          : (item.kind === 'post' ? postLinks : termLinks).get(item.ref!);
+      if (!url) return [];
+      const children = build(item.children);
+      const active = url === current || children.some((c) => c.active === true);
+      return [{ label: item.label, url, active, children }];
+    });
+  return Object.fromEntries(all.map((m) => [m.location, { items: build(m.items) }]));
+}
+
+function safeDecode(path: string): string {
+  try {
+    return decodeURI(path);
+  } catch {
+    return path;
+  }
 }
 
 // --- SEO ------------------------------------------------------------------------------------

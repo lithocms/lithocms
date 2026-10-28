@@ -89,6 +89,7 @@ describe('row-level security', () => {
     expect(tenant.map((r) => r.table)).toEqual([
       'audit_log',
       'media',
+      'menus',
       'post_terms',
       'posts',
       'revisions',
