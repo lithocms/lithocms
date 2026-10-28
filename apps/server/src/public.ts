@@ -87,7 +87,8 @@ export function registerPublic(
         origin: originOf(site),
       }),
     );
-    if (res.status === 301) return reply.redirect(res.location, 301);
+    // Always absolute on the site's own origin.
+    if (res.status === 301) return reply.redirect(`${originOf(site)}${res.location}`, 301);
     return reply
       .code(res.status)
       .type('text/html; charset=utf-8')

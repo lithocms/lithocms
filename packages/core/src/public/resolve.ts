@@ -63,7 +63,10 @@ export async function resolvePath(
   search?: string,
 ): Promise<Resolved> {
   const p = site.permalinks;
-  if (path.length > MAX_PATH_LENGTH) return { type: 'not_found' };
+  // `//host` or backslashes would make redirects leave the site.
+  if (path.length > MAX_PATH_LENGTH || !path.startsWith('/') || /^\/\/|\\/.test(path)) {
+    return { type: 'not_found' };
+  }
   // WordPress style: every page URL ends with a slash.
   if (!path.endsWith('/') && !/\.[a-z0-9]+$/i.test(path)) {
     return { type: 'redirect', location: `${path}/` };
