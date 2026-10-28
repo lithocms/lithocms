@@ -1,6 +1,8 @@
 import {
+  CycleTag,
   Liquid,
   Tag,
+  Value,
   evalToken,
   filters as builtinFilters,
   type Context,
@@ -99,9 +101,7 @@ export function createThemeEngine(files: ThemeFiles): ThemeEngine {
     renderLimit: LIMITS.renderMs,
     memoryLimit: LIMITS.memory,
     cache: true,
-    outputEscape(this: unknown, value: unknown) {
-      return value instanceof SafeHtml ? value.html : escapeHtml(toText(value));
-    },
+    outputEscape: escapeOutput,
   });
   for (const tag of REMOVED_TAGS) delete liquid.tags[tag];
   // `raw` would bypass escaping.
@@ -157,6 +157,11 @@ function templatePath(engine: ThemeEngine, template: string): string {
     if (name && engine.has(`templates/${name}.liquid`)) return `templates/${name}.liquid`;
   }
   return `templates/${template}.liquid`;
+}
+
+/** The one escaping rule for everything a template outputs. */
+function escapeOutput(value: unknown): string {
+  return value instanceof SafeHtml ? value.html : escapeHtml(toText(value));
 }
 
 function toText(value: unknown): string {
@@ -233,6 +238,30 @@ function ignoredBlock(name: string) {
 }
 
 function registerTags(liquid: Liquid): void {
+  // The built-in `echo` and `cycle` write values without `outputEscape`; replace them.
+  liquid.registerTag(
+    'echo',
+    class extends Tag {
+      private value?: Value;
+      constructor(token: TagToken, remain: TopLevelToken[], liquid: Liquid) {
+        super(token, remain, liquid);
+        this.tokenizer.skipBlank();
+        if (!this.tokenizer.end())
+          this.value = new Value(this.tokenizer.readFilteredValue(), liquid);
+      }
+      *render(ctx: Context, emitter: Emitter): Generator<unknown, void, unknown> {
+        if (this.value) emitter.write(escapeOutput(yield this.value.value(ctx, false)));
+      }
+    },
+  );
+  liquid.registerTag(
+    'cycle',
+    class extends CycleTag {
+      override *render(ctx: Context, emitter: Emitter): Generator<unknown, string, unknown> {
+        return escapeOutput(yield* super.render(ctx, emitter));
+      }
+    },
+  );
   liquid.registerTag('head_extras', hookTag('headExtras'));
   liquid.registerTag('body_extras', hookTag('bodyExtras'));
   liquid.registerTag('seo', hookTag('seo'));

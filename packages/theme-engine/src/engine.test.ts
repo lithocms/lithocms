@@ -63,6 +63,14 @@ describe('layout and escaping', () => {
     expect(out).toBe('&lt;script&gt;x&lt;/script&gt;|<p>ok</p>|&lt;P&gt;OK&lt;/P&gt;');
   });
 
+  it.each([
+    ['echo', '{% echo post.title %}'],
+    ['liquid echo', '{% liquid\n echo post.title\n %}'],
+    ['cycle', '{% cycle post.title, "b" %}'],
+  ])('escapes %s output too', async (_name, template) => {
+    expect(await render(template, { post: { title: '<b>x</b>' } })).toBe('&lt;b&gt;x&lt;/b&gt;');
+  });
+
   it('falls back to the contract templates', async () => {
     const engine = createThemeEngine({
       'layouts/base.liquid': '{{ content_for_layout }}',
