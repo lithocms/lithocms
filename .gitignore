@@ -1,0 +1,22 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+*.log
+
+.env
+.env.*
+!.env.example
+
+playwright-report/
+test-results/
+
+.DS_Store
+.idea/
+.vscode/
+
+# local agent tooling stays outside the repo
+.claude/
+CLAUDE.md
+CLAUDE.local.md
