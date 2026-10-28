@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Actor } from '../content/audit.js';
 import { DocInput } from '../content/input.js';
 import { MenuUpdateInput, updateMenu } from '../content/menus.js';
+import { updateSlot } from '../content/slots.js';
+import { Forbidden } from '../errors.js';
 import {
   createPost,
   listPosts,
@@ -45,7 +47,8 @@ const files = {
   'templates/category.liquid':
     '<h1>{{ term.name }} ({{ term.post_count }})</h1>{% for a in term.ancestors %}<b>{{ a.name }}</b>{% endfor %}' +
     '{% for p in posts %}<a class="post" href="{{ p.url }}">{{ p.title }}</a>{% endfor %}',
-  'templates/search.liquid': '<h1>{{ search.terms }}</h1>',
+  'templates/search.liquid':
+    '<h1>{{ search.terms }}</h1>{% slot "ad" %}{% slot "off" %}{% slot "none" %}',
   'templates/404.liquid': '<h1>Not here</h1>',
 };
 const theme: PublicTheme = {
@@ -241,6 +244,21 @@ describe('renderPublic', () => {
     const page = await html('/', '<img src=x onerror=alert(1)>');
     expect(page).toContain('<h1>&lt;img src=x onerror=alert(1)&gt;</h1>');
     expect(page).toContain('<meta name="robots" content="noindex">');
+  });
+
+  it('outputs enabled slots raw and only lets admins edit them', async () => {
+    const admin: Actor = { ...editor, role: 'admin' };
+    await inSite(async (tx) => {
+      await updateSlot(tx, siteId, admin, 'ad', {
+        html: '<ins class="ad">Ad</ins>',
+        enabled: true,
+      });
+      await updateSlot(tx, siteId, admin, 'off', { html: '<b>hidden</b>' });
+    });
+    await expect(
+      inSite((tx) => updateSlot(tx, siteId, editor, 'ad', { enabled: false })),
+    ).rejects.toBeInstanceOf(Forbidden);
+    expect(await html('/', 'x')).toContain('<h1>x</h1><ins class="ad">Ad</ins></body>');
   });
 
   it('outputs theme tokens as CSS variables', async () => {

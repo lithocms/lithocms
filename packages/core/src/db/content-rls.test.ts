@@ -93,6 +93,7 @@ describe('row-level security', () => {
       'post_terms',
       'posts',
       'revisions',
+      'slots',
       'terms',
       'theme_versions',
       'themes',

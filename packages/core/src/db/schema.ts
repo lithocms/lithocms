@@ -460,6 +460,23 @@ export const menus = pgTable(
   (t) => [unique().on(t.siteId, t.location), tenantPolicy('menus')],
 ).enableRLS();
 
+// --- slots --------------------------------------------------------------------------------
+
+/** Admin-managed raw HTML for places the theme declares (ads, analytics, banners). */
+export const slots = pgTable(
+  'slots',
+  {
+    id: id(),
+    siteId: siteRef(),
+    key: text().notNull(),
+    html: text().notNull().default(''),
+    enabled: boolean().notNull().default(false),
+    updatedBy: uuid().references(() => users.id, { onDelete: 'set null' }),
+    updatedAt: updatedAt(),
+  },
+  (t) => [unique().on(t.siteId, t.key), tenantPolicy('slots')],
+).enableRLS();
+
 // --- themes ---------------------------------------------------------------------------------
 // Bundled themes have no site (visible to every site, written only by the owner role at
 // startup); themes made for a site (upload, MCP) belong to it.

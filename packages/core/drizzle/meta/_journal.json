@@ -50,6 +50,13 @@
       "when": 1793227618486,
       "tag": "0006_menus",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793228054372,
+      "tag": "0007_slots",
+      "breakpoints": true
     }
   ]
 }

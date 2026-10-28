@@ -223,6 +223,15 @@ describe('admin API', () => {
     expect((await call('editor', 'GET', a('/menus/Bad%20Key'))).statusCode).toBe(400);
   });
 
+  it('lets only admins edit slots', async () => {
+    const body = { html: '<div id="ad"></div>', enabled: true };
+    expect((await call('editor', 'PUT', a('/slots/header-ad'), body)).statusCode).toBe(403);
+    const saved = await call('root', 'PUT', a('/slots/header-ad'), body);
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ key: 'header-ad', enabled: true });
+    expect((await call('editor', 'GET', a('/slots'))).json()).toMatchObject([{ key: 'header-ad' }]);
+  });
+
   it('hides other sites and their posts', async () => {
     const { id } = (
       await call('editor', 'POST', a('/posts'), { type: 'post', title: 'Secret' })
