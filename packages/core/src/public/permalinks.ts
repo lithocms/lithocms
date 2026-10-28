@@ -12,7 +12,12 @@ const Pattern = (tokens: string[]) =>
     .refine(
       (p) => [...p.matchAll(/:([a-z]+)/g)].every((m) => tokens.includes(m[1]!)),
       `Allowed tokens: ${tokens.map((t) => `:${t}`).join(', ')}`,
-    );
+    )
+    // Repeated tokens would make matching backtrack polynomially.
+    .refine((p) => {
+      const used = [...p.matchAll(/:([a-z]+)/g)].map((m) => m[1]);
+      return new Set(used).size === used.length;
+    }, 'Each token can be used once');
 
 export const Permalinks = z.strictObject({
   post: Pattern(['year', 'month', 'day', 'slug', 'category', 'id']).refine(
@@ -106,8 +111,12 @@ const SEGMENT: Record<string, string> = {
   category: '([\\p{Ll}\\p{Lo}\\p{N}_-]+(?:/[\\p{Ll}\\p{Lo}\\p{N}_-]+)*)',
 };
 
+/** Longest path we try to match; WordPress-era URLs are far shorter. */
+export const MAX_PATH_LENGTH = 1024;
+
 /** Matches `path` against a pattern and returns its token values. */
 export function matchPattern(pattern: string, path: string): Record<string, string> | null {
+  if (path.length > MAX_PATH_LENGTH) return null;
   const tokens: string[] = [];
   const source = pattern
     .split(/(:[a-z]+)/)

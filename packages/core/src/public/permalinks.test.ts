@@ -59,7 +59,16 @@ describe('permalinks', () => {
     { category: '/:path/' },
     { page: '/x/' },
     { post: '/:slug' },
+    { post: '/:category/:category/:slug/' },
   ])('rejects invalid patterns %o', (change) => {
     expect(Permalinks.safeParse({ ...tr, ...change }).success).toBe(false);
+  });
+
+  it('stays fast on long hostile paths', () => {
+    const path = `/${'a/'.repeat(500)}!/`;
+    const start = performance.now();
+    expect(matchPattern('/:category/:slug/', path)).toBeNull();
+    expect(matchPattern('/:path/', `/${'a'.repeat(5000)}/`)).toBeNull();
+    expect(performance.now() - start).toBeLessThan(50);
   });
 });
