@@ -4,6 +4,8 @@ import { sites, themes, themeVersions } from '../db/schema.js';
 
 export type ThemeVersion = typeof themeVersions.$inferSelect;
 
+const RENDERABLE: ThemeVersion['status'][] = ['valid', 'active'];
+
 export interface BundledTheme {
   slug: string;
   name: string;
@@ -65,8 +67,9 @@ export async function siteThemeVersion(
     .where(
       and(
         eq(sites.id, siteId),
-        // Never a version that belongs to another site.
+        // Never a version that belongs to another site, or one that failed validation.
         or(isNull(themeVersions.siteId), eq(themeVersions.siteId, siteId)),
+        inArray(themeVersions.status, RENDERABLE),
       ),
     );
   if (active) return active.version;

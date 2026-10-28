@@ -85,6 +85,16 @@ describe('theme registry', () => {
       version!.id,
     );
 
+    // A version that is not valid (any more) falls back to the default.
+    await withSite(db, siteB, (tx) =>
+      tx.update(themeVersions).set({ status: 'invalid' }).where(eq(themeVersions.id, version!.id)),
+    );
+    const fallback = await withSite(db, siteB, (tx) => siteThemeVersion(tx, siteB, ['corporate']));
+    expect(fallback?.storagePath).toBe('bundled/corporate');
+    await withSite(db, siteB, (tx) =>
+      tx.update(themeVersions).set({ status: 'active' }).where(eq(themeVersions.id, version!.id)),
+    );
+
     // Site A pointing at B's version falls back to the default.
     await db.update(sites).set({ activeThemeVersionId: version!.id }).where(eq(sites.id, siteA));
     const used = await withSite(db, siteA, (tx) => siteThemeVersion(tx, siteA, ['corporate']));
