@@ -5,7 +5,10 @@ FROM node:${NODE_VERSION}-slim AS build
 RUN npm install -g pnpm@12.16.1
 WORKDIR /src
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+# Every workspace package.json, so the install layer only changes when dependencies do.
 COPY packages/core/package.json packages/core/
+COPY packages/content-format/package.json packages/content-format/
+COPY packages/theme-engine/package.json packages/theme-engine/
 COPY apps/server/package.json apps/server/
 RUN pnpm install --frozen-lockfile
 COPY . .

@@ -5,3 +5,8 @@ export { isBlockedAddress, safeFetch, SafeFetchError } from './net/safe-fetch.js
 export type { SafeFetchOptions, SafeFetchResponse } from './net/safe-fetch.js';
 export * from './errors.js';
 export { can, type Capability } from './permissions.js';
+export type { Actor } from './content/audit.js';
+export { DocInput, MarkdownInput } from './content/input.js';
+export * from './content/posts.js';
+export * from './content/terms.js';
+export { slugify } from './content/slug.js';

@@ -8,6 +8,8 @@ x-node-modules: &node-modules
   # Linux node_modules live in volumes so they never mix with the host's.
   - nm-root:/src/node_modules
   - nm-core:/src/packages/core/node_modules
+  - nm-content-format:/src/packages/content-format/node_modules
+  - nm-theme-engine:/src/packages/theme-engine/node_modules
   - nm-server:/src/apps/server/node_modules
 
 services:
@@ -57,4 +59,6 @@ volumes:
   pnpm-store:
   nm-root:
   nm-core:
+  nm-content-format:
+  nm-theme-engine:
   nm-server:
