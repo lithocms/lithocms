@@ -3,9 +3,10 @@ import { createHash } from 'node:crypto';
 
 /** Hashed client address for audit and rate limits; raw IPs are never stored. */
 export function ipHash(request: FastifyRequest, secret: string): string {
-  // Caddy replaces X-Forwarded-For with the real client address (same assumption as auth).
+  // One proxy (Caddy or the documented nginx setup) sits in front and appends the address it
+  // saw, so the last entry is the only one a client cannot choose.
   const forwarded = request.headers['x-forwarded-for'];
-  const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
+  const ip = (Array.isArray(forwarded) ? forwarded.at(-1) : forwarded)?.split(',').at(-1)?.trim();
   return createHash('sha256')
     .update(`${secret}:${ip ?? request.ip}`)
     .digest('base64url')

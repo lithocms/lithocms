@@ -260,6 +260,9 @@ describe('admin API', () => {
     expect(saved.json()).toMatchObject({ key: 'contact', consentText: '' });
     expect((await call('root', 'GET', a('/forms/contact/submissions'))).json()).toEqual([]);
     expect((await call('editor', 'GET', a('/forms/contact/submissions'))).statusCode).toBe(403);
+    // Definitions carry notification addresses.
+    expect((await call('editor', 'GET', a('/forms'))).statusCode).toBe(403);
+    expect((await call('editor', 'GET', a('/forms/contact'))).statusCode).toBe(403);
   });
 
   it('lets only admins edit slots', async () => {

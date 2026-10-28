@@ -1,5 +1,5 @@
 import { escapeHtml } from '@lithocms/theme-engine';
-import { and, asc, count, desc, eq, gt } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, sql } from 'drizzle-orm';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { Tx } from '../db/client.js';
@@ -67,9 +67,11 @@ export const SubmissionUpdateInput = z.strictObject({ status: z.enum(SUBMISSION_
 export type Form = typeof forms.$inferSelect;
 export type Submission = Omit<typeof formSubmissions.$inferSelect, 'ipHash'>;
 
-function assertManage(actor: Actor) {
+/** Form definitions include notification addresses, so only admins see them. */
+export function assertFormManager(actor: Actor) {
   if (!can(actor.role, 'form.manage')) throw new Forbidden('Only admins can manage forms');
 }
+const assertManage = assertFormManager;
 
 export function listForms(tx: Tx, siteId: string): Promise<Form[]> {
   return tx.select().from(forms).where(eq(forms.siteId, siteId)).orderBy(asc(forms.key));
@@ -171,20 +173,34 @@ export async function updateSubmission(
 
 // --- public submissions ---------------------------------------------------------------------
 
+/** Where a form lives; tokens are only valid for that form. */
+export interface FormRef {
+  siteId: string;
+  key: string;
+}
+
 /** Signed render time, checked on submit (time trap). */
-export function formToken(secret: string, now = Date.now()): string {
+export function formToken(secret: string, form: FormRef, now = Date.now()): string {
   const ts = now.toString(36);
-  return `${ts}.${sign(secret, ts)}`;
+  return `${ts}.${sign(secret, form, ts)}`;
 }
 
-function sign(secret: string, ts: string): string {
-  return createHmac('sha256', secret).update(`form:${ts}`).digest('base64url').slice(0, 22);
+function sign(secret: string, form: FormRef, ts: string): string {
+  return createHmac('sha256', secret)
+    .update(`form:${form.siteId}:${form.key}:${ts}`)
+    .digest('base64url')
+    .slice(0, 22);
 }
 
-function tokenAge(secret: string, token: string | undefined, now: number): number | null {
+function tokenAge(
+  secret: string,
+  form: FormRef,
+  token: string | undefined,
+  now: number,
+): number | null {
   const [ts, sig] = (token ?? '').split('.');
   if (!ts || !sig) return null;
-  const expected = Buffer.from(sign(secret, ts));
+  const expected = Buffer.from(sign(secret, form, ts));
   const given = Buffer.from(sig);
   if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
   return now - parseInt(ts, 36);
@@ -210,10 +226,14 @@ export async function submitForm(
 ): Promise<'stored' | 'spam'> {
   const form = await getForm(tx, siteId, key);
   const now = ctx.now ?? Date.now();
-  const age = tokenAge(ctx.secret, raw._t, now);
+  const age = tokenAge(ctx.secret, { siteId, key }, raw._t, now);
   if (raw[HONEYPOT] || age === null || age < MIN_FILL_MS || age > MAX_TOKEN_AGE_MS) return 'spam';
 
   const data = parseSubmission(form, raw);
+  // One check at a time per form and address, so parallel posts cannot slip past the limit.
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`form:${form.id}:${ctx.ipHash}`}, 0))`,
+  );
   const [recent] = await tx
     .select({ n: count() })
     .from(formSubmissions)

@@ -25,7 +25,7 @@ let admin: Actor;
 let editor: Actor;
 
 const inSite = <T>(fn: (tx: Tx) => Promise<T>) => withSite(db, siteId, fn);
-const ago = (ms: number) => formToken(secret, Date.now() - ms);
+const ago = (ms: number) => formToken(secret, { siteId, key: 'contact' }, Date.now() - ms);
 const submit = (raw: Record<string, string>, ipHash = 'ip-1') =>
   inSite((tx) =>
     submitForm(tx, siteId, 'contact', { _t: ago(10_000), ...raw }, { secret, ipHash }),
@@ -160,6 +160,10 @@ describe('submitForm', () => {
     ['the token is old', () => ({ _t: ago(8 * 24 * 3_600_000) })],
     ['the token is forged', () => ({ _t: `${Date.now().toString(36)}.forged` })],
     ['there is no token', () => ({ _t: '' })],
+    [
+      'the token is for another form',
+      () => ({ _t: formToken(secret, { siteId, key: 'other' }, Date.now() - 10_000) }),
+    ],
   ])('drops it silently when %s', async (_name, extra) => {
     const before = (await stored()).length;
     const result = await submit({
@@ -174,8 +178,11 @@ describe('submitForm', () => {
 
   it('limits submissions per address', async () => {
     const valid = { name: 'x', email: 'a@b.co', _consent: '1' };
-    for (let i = 0; i < 5; i++) await submit(valid, 'ip-busy');
-    await expect(submit(valid, 'ip-busy')).rejects.toThrow(/Too many/);
+    // Sent in parallel: the limit still holds.
+    const results = await Promise.allSettled(
+      Array.from({ length: 8 }, () => submit(valid, 'ip-busy')),
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(5);
     expect(await submit(valid, 'ip-other')).toBe('stored');
   });
 });

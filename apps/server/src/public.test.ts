@@ -173,7 +173,7 @@ describe('forms', () => {
       headers: { host, 'content-type': 'application/x-www-form-urlencoded', ...headers },
       payload: new URLSearchParams(body).toString(),
     });
-  const token = () => formToken(secret, Date.now() - 10_000);
+  const token = () => formToken(secret, { siteId: siteA, key: 'contact' }, Date.now() - 10_000);
 
   it('renders the form with a fresh token', async () => {
     const page = await get('a.example', '/iletisim/');
