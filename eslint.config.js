@@ -9,7 +9,7 @@ export default defineConfig(
   {
     languageOptions: {
       parserOptions: {
-        projectService: { allowDefaultProject: ['*.config.ts'] },
+        projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -23,6 +23,10 @@ export default defineConfig(
       ],
     },
   },
-  { files: ['**/*.js'], extends: [tseslint.configs.disableTypeChecked] },
+  // Tool config files sit outside the package tsconfigs.
+  {
+    files: ['**/*.js', '**/*.config.ts'],
+    extends: [tseslint.configs.disableTypeChecked],
+  },
   { files: ['**/*.config.{js,ts}'], rules: { 'no-restricted-syntax': 'off' } },
 );
