@@ -53,7 +53,7 @@ beforeAll(async () => {
         name: 'Site <A>',
         settings: { csp_allowlist: ['cdn.example.org', "evil.com 'unsafe-inline'"] },
       },
-      { name: 'B' },
+      { name: 'B', settings: { search_engines: false } },
     ])
     .returning();
   await db.insert(schema.siteDomains).values([
@@ -74,6 +74,20 @@ beforeAll(async () => {
       PostCreateInput.parse({ type: 'page', title: 'İletişim' }),
     );
     await publishPost(tx, siteA, admin, page.id);
+    const post = await createPost(
+      tx,
+      siteA,
+      admin,
+      PostCreateInput.parse({ type: 'post', title: 'Çay & <kahve>', excerpt: 'Kısa' }),
+    );
+    await publishPost(tx, siteA, admin, post.id);
+    const hidden = await createPost(
+      tx,
+      siteA,
+      admin,
+      PostCreateInput.parse({ type: 'post', title: 'Gizli', seo: { noindex: true } }),
+    );
+    await publishPost(tx, siteA, admin, hidden.id);
     for (const r of [
       { fromPath: '/eski-iletisim/', to: '/iletisim/' },
       { fromPath: '/kampanya', to: 'https://shop.example/sale', code: 302 },
@@ -244,5 +258,43 @@ describe('redirects', () => {
     const res = await get('a.example', '/kaldirildi/');
     expect(res.statusCode).toBe(410);
     expect(res.body).toContain('<h1>Not found</h1>');
+  });
+});
+
+describe('robots, sitemaps and feed', () => {
+  it('points robots.txt at the sitemap, or keeps engines out when asked', async () => {
+    expect((await get('a.example', '/robots.txt')).body).toContain(
+      'Sitemap: https://a.example/sitemap.xml',
+    );
+    expect((await get('b.example', '/robots.txt')).body).toBe('User-agent: *\nDisallow: /\n');
+    expect((await get('b.example')).body).toContain('<meta name="robots" content="noindex">');
+  });
+
+  it('lists live, indexable content in sitemaps', async () => {
+    const index = await get('a.example', '/sitemap.xml');
+    expect(index.headers['content-type']).toBe('application/xml; charset=utf-8');
+    expect(index.body).toContain('<loc>https://a.example/sitemap-posts-1.xml</loc>');
+    expect(index.body).toContain('<loc>https://a.example/sitemap-pages-1.xml</loc>');
+    const postsMap = (await get('a.example', '/sitemap-posts-1.xml')).body;
+    expect(postsMap).toContain('<loc>https://a.example/cay-kahve/</loc>');
+    expect(postsMap).not.toContain('gizli');
+    expect((await get('a.example', '/sitemap-pages-1.xml')).body).toContain('/iletisim/</loc>');
+    for (const url of ['/sitemap-posts-2.xml', '/sitemap-users-1.xml', '/sitemap-posts-0.xml']) {
+      expect((await get('a.example', url)).statusCode, url).toBe(404);
+    }
+    expect((await get('a.example', '/wp-sitemap.xml')).headers.location).toBe(
+      'https://a.example/sitemap.xml',
+    );
+  });
+
+  it('publishes an escaped RSS feed and links it from pages', async () => {
+    const feed = await get('a.example', '/feed/');
+    expect(feed.headers['content-type']).toBe('application/rss+xml; charset=utf-8');
+    expect(feed.body).toContain('<title>Çay &amp; &lt;kahve&gt;</title>');
+    expect(feed.body).toContain('<link>https://a.example/cay-kahve/</link>');
+    expect(feed.body).toContain('<description>Kısa</description>');
+    expect((await get('a.example', '/')).body).toContain(
+      '<link rel="alternate" type="application/rss+xml" title="Site &lt;A&gt;" href="https://a.example/feed/">',
+    );
   });
 });

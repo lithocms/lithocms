@@ -1,11 +1,17 @@
 import {
+  loadPublicSite,
   NotFound,
   renderPublic,
+  robotsTxt,
+  rssFeed,
+  sitemapIndex,
+  sitemapPart,
   siteThemeVersion,
   submitForm,
   ValidationFailed,
   withSite,
   type Db,
+  type Tx,
 } from '@lithocms/core';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ipHash } from './client-ip.js';
@@ -124,6 +130,56 @@ export function registerPublic(
   app.get('/', page);
   app.get('/*', page);
 
+  // robots.txt, sitemaps and the feed
+  const xmlRoute = (
+    url: string,
+    type: string,
+    make: (
+      tx: Tx,
+      site: ResolvedSite,
+      params: Record<string, string>,
+    ) => Promise<string | undefined>,
+  ) =>
+    app.get(url, async (request, reply) => {
+      const site = request.site;
+      if (!site) return reply.code(404).send({ error: 'not_found' });
+      const body = await withSite(db, site.id, (tx) =>
+        make(tx, site, request.params as Record<string, string>),
+      );
+      if (body === undefined) return reply.code(404).send({ error: 'not_found' });
+      return reply
+        .type(type)
+        .header('cache-control', 'public, max-age=300')
+        .header('x-content-type-options', 'nosniff')
+        .send(body);
+    });
+  xmlRoute('/robots.txt', 'text/plain; charset=utf-8', async (tx, site) => {
+    const { settings } = await loadPublicSite(tx, site.id);
+    return robotsTxt(settings, originOf(site));
+  });
+  xmlRoute('/sitemap.xml', 'application/xml; charset=utf-8', (tx, site) =>
+    sitemapIndex(tx, site.id, originOf(site)),
+  );
+  xmlRoute('/sitemap-:kind-:n.xml', 'application/xml; charset=utf-8', async (tx, site, p) => {
+    const kind = SITEMAP_KINDS.find((k) => k === p.kind);
+    const n = Number(p.n);
+    if (!kind || !Number.isInteger(n) || n < 1 || n > 10_000) return undefined;
+    return sitemapPart(tx, site.id, originOf(site), kind, n);
+  });
+  for (const url of ['/feed', '/feed/']) {
+    xmlRoute(url, 'application/rss+xml; charset=utf-8', (tx, site) =>
+      rssFeed(tx, site.id, originOf(site)),
+    );
+  }
+  // Where WordPress and its SEO plugins put them; imported sites are submitted with these.
+  for (const url of ['/wp-sitemap.xml', '/sitemap_index.xml']) {
+    app.get(url, (request, reply) =>
+      request.site
+        ? reply.redirect(`${originOf(request.site)}/sitemap.xml`, 301)
+        : reply.code(404).send({ error: 'not_found' }),
+    );
+  }
+
   // Core-rendered forms post here (no JavaScript needed), then go back to the page they were
   // on with the result. Bot-like posts look like success to the sender.
   void app.register((scope, _opts, done) => {
@@ -159,6 +215,7 @@ export function registerPublic(
   });
 }
 
+const SITEMAP_KINDS = ['posts', 'pages', 'categories', 'tags'] as const;
 const FORM_PARAM = 'litho_form';
 const FORM_STATUS_PARAM = 'litho_status';
 
