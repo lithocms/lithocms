@@ -10,6 +10,7 @@ import {
   createTerm,
   deleteEntry,
   deleteRedirect,
+  FieldList,
   DomainError,
   EntryInput,
   EntryListQuery,
@@ -61,7 +62,9 @@ import {
   updateSubmission,
   updatePost,
   updateRedirect,
+  termFields,
   updateTerm,
+  updateTermFields,
   ValidationFailed,
   uploadMedia,
   upsertEntry,
@@ -103,6 +106,10 @@ const Key = z.strictObject({ siteId: z.uuid(), key: SlotKey });
 const CollectionParams = z.strictObject({ siteId: z.uuid(), key: CollectionKey });
 const EntryParams = CollectionParams.extend({ id: z.uuid() });
 const FormParams = z.strictObject({ siteId: z.uuid(), key: FormKey });
+const TaxonomyParams = z.strictObject({
+  siteId: z.uuid(),
+  taxonomy: z.enum(schema.TAXONOMIES),
+});
 const UploadQuery = z.strictObject({
   filename: z.string().min(1).max(255),
   alt: z.string().max(500).optional(),
@@ -250,6 +257,17 @@ export function registerApi(
         reply
           .code(201)
           .send(await run(req, (tx, siteId, actor) => createTerm(tx, siteId, actor, req.body))),
+      );
+      api.get('/taxonomies/:taxonomy/fields', { schema: { params: TaxonomyParams } }, (req) =>
+        run(req, (tx, siteId) => termFields(tx, siteId, req.params.taxonomy)),
+      );
+      api.put(
+        '/taxonomies/:taxonomy/fields',
+        { schema: { params: TaxonomyParams, body: FieldList } },
+        (req) =>
+          run(req, (tx, siteId, actor) =>
+            updateTermFields(tx, siteId, actor, req.params.taxonomy, req.body),
+          ),
       );
       api.patch('/terms/:id', { schema: { params: Id, body: TermUpdateInput } }, (req) =>
         run(req, (tx, siteId, actor) => updateTerm(tx, siteId, actor, req.params.id, req.body)),

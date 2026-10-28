@@ -21,7 +21,7 @@ import {
   updatePost,
 } from './posts.js';
 import { slugify } from './slug.js';
-import { createTerm, listTerms, updateTerm } from './terms.js';
+import { createTerm, listTerms, termFields, updateTerm, updateTermFields } from './terms.js';
 
 let tdb: TestDatabase;
 let db: Db;
@@ -308,5 +308,46 @@ describe('terms', () => {
     await expect(
       t({ taxonomy: 'category', name: 'PC', parentId: games.id }),
     ).rejects.toBeInstanceOf(Conflict);
+  });
+
+  it('validates meta against the taxonomy field schema', async () => {
+    const t = (input: Parameters<typeof createTerm>[3]) =>
+      inA((tx) => createTerm(tx, siteA, actors.editor, input));
+    // No schema yet: no meta.
+    await expect(t({ taxonomy: 'tag', name: 'X', meta: { a: 1 } })).rejects.toBeInstanceOf(
+      ValidationFailed,
+    );
+    await expect(
+      inA((tx) =>
+        updateTermFields(tx, siteA, actors.author, 'tag', [
+          { key: 'a', label: 'A', type: 'number' },
+        ]),
+      ),
+    ).rejects.toBeInstanceOf(Forbidden);
+    await inA((tx) =>
+      updateTermFields(tx, siteA, actors.editor, 'tag', [
+        { key: 'a', label: 'A', type: 'number' },
+        { key: 'img', label: 'Img', type: 'image' },
+      ]),
+    );
+    const tag = await t({ taxonomy: 'tag', name: 'Y', meta: { a: 1 } });
+    expect(tag.meta).toEqual({ a: 1 });
+    const error = await inA((tx) =>
+      updateTerm(tx, siteA, actors.editor, tag.id, {
+        meta: { a: 'x', img: '00000000-0000-4000-8000-000000000000' },
+      }),
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ValidationFailed);
+    expect((error as ValidationFailed).issues[0]!.path).toEqual(['meta', 'a']);
+    // Images must exist in this site.
+    await expect(
+      inA((tx) =>
+        updateTerm(tx, siteA, actors.editor, tag.id, {
+          meta: { img: '00000000-0000-4000-8000-000000000000' },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(ValidationFailed);
+    // Other sites have their own schemas.
+    expect(await withSite(db, siteB, (tx) => termFields(tx, siteB, 'tag'))).toEqual([]);
   });
 });

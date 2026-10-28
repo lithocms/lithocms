@@ -81,7 +81,11 @@ export function storedFieldValue(field: FieldDef, value: unknown): unknown {
 }
 
 /** Validates `data` against `fields`; unknown keys are rejected. */
-export function parseFieldData(fields: FieldDef[], data: unknown): Record<string, unknown> {
+export function parseFieldData(
+  fields: FieldDef[],
+  data: unknown,
+  path = 'data',
+): Record<string, unknown> {
   const shape = Object.fromEntries(
     fields.map((f) => {
       const value = valueSchema(f);
@@ -95,7 +99,7 @@ export function parseFieldData(fields: FieldDef[], data: unknown): Record<string
   if (!parsed.success) {
     throw new ValidationFailed(
       parsed.error.issues.map((i) => ({
-        path: ['data', ...i.path.map(String)],
+        path: [path, ...i.path.map(String)],
         message: i.message,
       })),
     );
@@ -109,6 +113,7 @@ export async function checkFieldRefs(
   siteId: string,
   fields: FieldDef[],
   data: Record<string, unknown>,
+  path = 'data',
 ): Promise<void> {
   const of = (type: FieldDef['type']) =>
     fields.filter((f) => f.type === type && data[f.key] != null);
@@ -142,7 +147,7 @@ export async function checkFieldRefs(
   ];
   if (missing.length) {
     throw new ValidationFailed(
-      missing.map((f) => ({ path: ['data', f.key], message: 'Not found in this site' })),
+      missing.map((f) => ({ path: [path, f.key], message: 'Not found in this site' })),
     );
   }
 }

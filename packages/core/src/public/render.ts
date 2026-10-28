@@ -16,6 +16,7 @@ import { entriesOf, listCollections } from '../content/collections.js';
 import { storedFieldValue, type Reference } from '../content/fields.js';
 import { formToken, listForms, renderForm } from '../content/forms.js';
 import { flatten, listMenus } from '../content/menus.js';
+import { termFields } from '../content/terms.js';
 import { hitRedirect } from '../content/redirects.js';
 import { renderContent } from '../content/posts.js';
 import { enabledSlots } from '../content/slots.js';
@@ -582,15 +583,27 @@ async function termNodes(tx: Tx, site: PublicSite, rows: Term[]): Promise<Map<st
         .groupBy(postTerms.termId)
     : [];
   const countOf = new Map(counts.map((c) => [c.termId, c.n]));
+  const fieldsOf = new Map(
+    await Promise.all(
+      [...new Set(rows.map((r) => r.taxonomy))].map(
+        async (t) => [t, await termFields(tx, site.id, t)] as const,
+      ),
+    ),
+  );
+  const meta = await resolveFields(
+    tx,
+    site,
+    rows.map((r) => ({ fields: fieldsOf.get(r.taxonomy)!, data: r.meta })),
+  );
   return new Map(
-    rows.map((r) => [
+    rows.map((r, i) => [
       r.id,
       {
         name: r.name,
         slug: r.slug,
         url: termUrl(site, r),
         description: r.description,
-        meta: r.meta,
+        meta: meta[i]!,
         post_count: countOf.get(r.id) ?? 0,
         parent: null,
         children: [],
@@ -675,14 +688,36 @@ async function collectionScope(tx: Tx, site: PublicSite): Promise<Scope> {
       ),
     ),
   );
-  // Re-checked against the current field types: entries are only validated when saved.
-  const cleaned = list.map((c, i) =>
-    entries[i]!.map((e) => ({
-      id: e.id,
-      values: c.fields.map((f) => ({ field: f, value: storedFieldValue(f, e.data[f.key]) })),
-    })),
+  const resolved = await resolveFields(
+    tx,
+    site,
+    list.flatMap((c, i) => entries[i]!.map((e) => ({ fields: c.fields, data: e.data }))),
   );
-  const values = cleaned.flat().flatMap((e) => e.values);
+  const result: Scope = {};
+  let n = 0;
+  for (const [i, c] of list.entries()) {
+    result[c.key] = {
+      label: c.label,
+      entries: entries[i]!.map((e) => ({ id: e.id, ...resolved[n++] })),
+    };
+  }
+  return result;
+}
+
+/**
+ * Field values ready for templates: images and links resolved, rich text rendered. Values are
+ * re-checked against the current field types (data is only validated when saved), and values
+ * of removed fields are dropped.
+ */
+async function resolveFields(
+  tx: Tx,
+  site: PublicSite,
+  items: { fields: FieldDef[]; data: Record<string, unknown> }[],
+): Promise<Scope[]> {
+  const cleaned = items.map(({ fields, data }) =>
+    fields.map((f) => ({ field: f, value: storedFieldValue(f, data[f.key]) })),
+  );
+  const values = cleaned.flat();
   const refs = (kind: Reference['kind']) =>
     values
       .filter((v) => v.field.type === 'reference' && (v.value as Reference | null)?.kind === kind)
@@ -725,26 +760,18 @@ async function collectionScope(tx: Tx, site: PublicSite): Promise<Scope> {
         return value;
     }
   };
-  const result: Scope = {};
-  for (const [i, c] of list.entries()) {
-    result[c.key] = {
-      label: c.label,
-      entries: await Promise.all(
-        cleaned[i]!.map(async (e) => ({
-          id: e.id,
-          ...Object.fromEntries(
-            await Promise.all(
-              e.values.map(async (v): Promise<[string, unknown]> => [
-                v.field.key,
-                await field(v.field, v.value),
-              ]),
-            ),
-          ),
-        })),
+  return Promise.all(
+    cleaned.map(async (vs) =>
+      Object.fromEntries(
+        await Promise.all(
+          vs.map(async (v): Promise<[string, unknown]> => [
+            v.field.key,
+            await field(v.field, v.value),
+          ]),
+        ),
       ),
-    };
-  }
-  return result;
+    ),
+  );
 }
 
 // --- SEO ------------------------------------------------------------------------------------
