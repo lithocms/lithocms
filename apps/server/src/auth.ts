@@ -5,7 +5,7 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { twoFactor } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { IncomingHttpHeaders } from 'node:http';
 
 export interface AuthOptions {
@@ -103,6 +103,11 @@ function withoutToken(body: unknown): unknown {
   );
 }
 
+/** The signed-in admin user for this request, if any. */
+export async function getSessionUser(auth: Auth, request: FastifyRequest) {
+  return (await auth.api.getSession({ headers: toHeaders(request.headers) }))?.user ?? null;
+}
+
 function toHeaders(raw: IncomingHttpHeaders): Headers {
   const headers = new Headers();
   for (const [key, value] of Object.entries(raw)) {
@@ -141,9 +146,9 @@ export function registerAuthRoutes(app: FastifyInstance, { auth, db }: { auth: A
   });
 
   app.get('/api/me', async (request, reply) => {
-    const session = await auth.api.getSession({ headers: toHeaders(request.headers) });
-    if (!session) return reply.code(401).send({ error: 'unauthorized' });
-    const { id, name, email, isInstanceOwner, twoFactorEnabled } = session.user;
+    const user = await getSessionUser(auth, request);
+    if (!user) return reply.code(401).send({ error: 'unauthorized' });
+    const { id, name, email, isInstanceOwner, twoFactorEnabled } = user;
     const sites = await db
       .select({ id: schema.sites.id, name: schema.sites.name, role: schema.memberships.role })
       .from(schema.memberships)

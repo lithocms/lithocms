@@ -2,6 +2,7 @@ import type { Db } from '@lithocms/core';
 import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
+import { registerApi } from './api.js';
 import { registerAuthRoutes, type Auth } from './auth.js';
 import { normalizeHost, type ResolvedSite, type SiteResolver } from './sites.js';
 
@@ -18,6 +19,8 @@ export interface AppOptions {
   /** Admin origin; the admin SPA, admin API and auth live only here. */
   adminUrl: URL;
   auth: Auth;
+  /** Same secret as auth; also keys the audit log's IP hashes. */
+  secret: string;
   logLevel?: string;
 }
 
@@ -31,6 +34,7 @@ export function buildApp({
   sites,
   adminUrl,
   auth,
+  secret,
   logLevel = 'info',
 }: AppOptions): FastifyInstance {
   const app = Fastify({
@@ -81,6 +85,7 @@ export function buildApp({
   });
 
   registerAuthRoutes(app, { auth, db });
+  registerApi(app, { db, auth, secret });
 
   // TODO(phase-1): replace with theme rendering (site origins) and the admin SPA (admin origin).
   app.get('/', (request) =>
