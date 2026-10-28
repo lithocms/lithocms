@@ -4,11 +4,11 @@ Thanks for your interest! This guide covers how work flows from a branch to a re
 
 ## Branches
 
-| Branch | Purpose |
-|---|---|
-| `main` | Released code only. Every release is tagged here (`vX.Y.Z`). |
-| `dev` | Integration branch and the default branch. All feature work targets `dev`. |
-| `feat/<topic>`, `fix/<topic>`, `chore/<topic>` … | Short-lived work branches, created from `dev`. |
+| Branch                                           | Purpose                                                                    |
+| ------------------------------------------------ | -------------------------------------------------------------------------- |
+| `main`                                           | Released code only. Every release is tagged here (`vX.Y.Z`).               |
+| `dev`                                            | Integration branch and the default branch. All feature work targets `dev`. |
+| `feat/<topic>`, `fix/<topic>`, `chore/<topic>` … | Short-lived work branches, created from `dev`.                             |
 
 Flow:
 
@@ -40,10 +40,10 @@ One concern per PR. Keep PRs small enough to review in one sitting.
 [Semantic Versioning](https://semver.org/), derived from the commits merged into `main`:
 
 | Commits since last release | Bump (≥ 1.0.0) | Bump (0.x) |
-|---|---|---|
-| `fix:`, `perf:` | patch | patch |
-| `feat:` | minor | minor |
-| breaking change | major | minor |
+| -------------------------- | -------------- | ---------- |
+| `fix:`, `perf:`            | patch          | patch      |
+| `feat:`                    | minor          | minor      |
+| breaking change            | major          | minor      |
 
 ## Releases
 
