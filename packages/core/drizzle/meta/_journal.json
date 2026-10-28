@@ -78,6 +78,13 @@
       "when": 1793230457952,
       "tag": "0010_redirects",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793231298248,
+      "tag": "0011_search",
+      "breakpoints": true
     }
   ]
 }

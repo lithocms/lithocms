@@ -212,14 +212,15 @@ async function buildPage(ctx: Ctx, resolved: Resolved): Promise<Page | undefined
       };
     }
     case 'search': {
-      // TODO(phase-1): full-text search.
+      const found = await searchPosts(ctx, resolved.query, resolved.page);
+      if (!found) return undefined;
       return {
         template: 'search',
         pageType: 'search',
         scope: {
-          posts: [],
-          search: { terms: resolved.query, results: [], results_count: 0 },
-          paginate: paginate(ctx, 1, 1),
+          posts: found.posts,
+          search: { terms: resolved.query, results: found.posts, results_count: found.total },
+          paginate: found.paginate,
         },
         seo: {
           title: `${strings(site).search}: ${resolved.query} – ${site.name}`,
@@ -348,6 +349,37 @@ async function listing(ctx: Ctx, template: string, page: number, where?: SQL) {
   return { posts: await postObjects(ctx, rows), paginate: paginate(ctx, page, pages) };
 }
 
+/** Live posts and pages matching `query` (web search syntax), best matches first. */
+async function searchPosts(ctx: Ctx, query: string, page: number) {
+  const { tx, site, theme } = ctx;
+  const size = theme.engine.pageSize('search') ?? pageSizeSetting(site);
+  const tsquery = sql`websearch_to_tsquery(litho_search_config(${site.locale}), ${query})`;
+  const filter = and(eq(posts.siteId, site.id), isLive(), sql`${posts.search} @@ ${tsquery}`);
+  const [{ total } = { total: 0 }] = query.trim()
+    ? await tx.select({ total: count() }).from(posts).where(filter)
+    : [];
+  const pages = Math.max(1, Math.ceil(total / size));
+  if (page > pages) return undefined;
+  const rows = total
+    ? await tx
+        .select()
+        .from(posts)
+        .where(filter)
+        .orderBy(
+          desc(sql`ts_rank_cd(${posts.search}, ${tsquery})`),
+          desc(posts.publishedAt),
+          desc(posts.id),
+        )
+        .limit(size)
+        .offset((page - 1) * size)
+    : [];
+  return {
+    posts: await postObjects(ctx, rows),
+    total,
+    paginate: paginate(ctx, page, pages, `?s=${encodeURIComponent(query)}`),
+  };
+}
+
 /** Posts in a tag, or in a category or any of its subcategories (like WordPress). */
 function inTerm(tx: Tx, term: Term): SQL {
   const matching =
@@ -370,10 +402,10 @@ function inTerm(tx: Tx, term: Term): SQL {
   );
 }
 
-function paginate(ctx: Ctx, current: number, pages: number) {
+function paginate(ctx: Ctx, current: number, pages: number, query = '') {
   const { site, req } = ctx;
   const [base] = splitPagination(site.permalinks, req.path);
-  const url = (n: number) => paginatedUrl(site.permalinks, base, n);
+  const url = (n: number) => paginatedUrl(site.permalinks, base, n) + query;
   // First, last and two around the current page; gaps become an ellipsis.
   const shown = [
     ...new Set([1, current - 2, current - 1, current, current + 1, current + 2, pages]),

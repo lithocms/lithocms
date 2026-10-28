@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  customType,
   foreignKey,
   index,
   integer,
@@ -294,6 +295,8 @@ export interface SectionInstance {
   blocks: { type: string; settings: Record<string, unknown> }[];
 }
 
+const tsvector = customType<{ data: string }>({ dataType: () => 'tsvector' });
+
 export const posts = pgTable(
   'posts',
   {
@@ -323,6 +326,8 @@ export const posts = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     trashedAt: timestamp({ withTimezone: true }),
+    /** Full-text index of title, excerpt and content text; kept by a trigger (migration 0011). */
+    search: tsvector(),
   },
   (t) => [
     unique().on(t.siteId, t.id),
@@ -338,6 +343,7 @@ export const posts = pgTable(
     check('posts_page_parent', sql`${t.parentId} is null or ${t.type} = 'page'`),
     index().on(t.siteId, t.type, t.status, t.publishedAt.desc()),
     index().on(t.siteId, t.slug),
+    index().using('gin', t.search),
     tenantPolicy('posts'),
   ],
 ).enableRLS();
