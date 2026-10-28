@@ -84,7 +84,12 @@ describe('public pages', () => {
     expect(missing.body).toContain('<h1>Not found</h1>');
     const search = await get('a.example', '/?s=%3Cb%3Ex');
     expect(search.body).toContain('<h1>&lt;b&gt;x</h1>');
-    expect((await get('a.example', '/nope')).headers.location).toBe('/nope/');
+    expect((await get('a.example', '/nope')).headers.location).toBe('https://a.example/nope/');
+    for (const url of ['//evil.example', '//evil.example/x?y=1']) {
+      const res = await get('a.example', url);
+      expect(res.statusCode, url).toBe(404);
+      expect(res.headers.location, url).toBeUndefined();
+    }
   });
 
   it('serves fingerprinted theme assets', async () => {

@@ -85,6 +85,9 @@ describe('resolvePath', () => {
     ['/taslak/', { type: 'not_found' }],
     ['/hakkimizda/page/2/', { type: 'not_found' }],
     ['/%E0%A4%A/', { type: 'not_found' }],
+    ['//evil.example', { type: 'not_found' }],
+    ['/\\evil.example', { type: 'not_found' }],
+    ['/a\\b', { type: 'not_found' }],
   ])('%s', async (path, expected) => {
     expect(summary(await resolve(path))).toEqual(expected);
   });
