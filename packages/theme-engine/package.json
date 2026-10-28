@@ -1,0 +1,25 @@
+{
+  "name": "@lithocms/theme-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "@lithocms/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lithocms/core": "workspace:*",
+    "liquidjs": "^10.30.0",
+    "zod": "^4.6.7"
+  }
+}
