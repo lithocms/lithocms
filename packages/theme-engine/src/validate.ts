@@ -279,6 +279,14 @@ function checkMarkup(
       );
     }
 
+    // Elements that change where the page or its relative URLs point, or load plugins.
+    for (const m of source.matchAll(
+      /<(base|object|embed|applet)\b|<meta\b[^>]*\bhttp-equiv\s*=/gi,
+    )) {
+      const what = m[1] ? `<${m[1].toLowerCase()}>` : '<meta http-equiv>';
+      error('markup', path, `${what} is not allowed`, at(m.index));
+    }
+
     // warning: images without alt
     for (const m of source.matchAll(/<img\b(?![^>]*\balt\s*=)[^>]*>/gi)) {
       warn('img-alt', path, '<img> without alt', at(m.index));
@@ -303,9 +311,11 @@ function checkMarkup(
       external.push([m[1] ?? '', m.index]);
     }
   } else {
-    for (const m of source.matchAll(
-      /<(script|link|iframe)\b[^>]*?\b(?:src|href)\s*=\s*["']?((?:https?:)?\/\/[^"'\s>]+)/gi,
-    )) {
+    const loads =
+      /<(script|link|iframe|frame)\b[^>]*?[\s/"'](?:src|href)\s*=\s*["']?((?:https?:)?\/\/[^"'\s>]+)/gi;
+    const submits =
+      /<(form|button|input)\b[^>]*?[\s/"'](?:action|formaction)\s*=\s*["']?((?:https?:)?\/\/[^"'\s>]+)/gi;
+    for (const m of [...source.matchAll(loads), ...source.matchAll(submits)]) {
       external.push([m[2] ?? '', m.index]);
     }
   }
