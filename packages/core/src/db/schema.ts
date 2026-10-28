@@ -434,6 +434,32 @@ export const postTerms = pgTable(
   ],
 ).enableRLS();
 
+// --- menus --------------------------------------------------------------------------------
+
+export interface MenuItem {
+  id: string;
+  label: string;
+  kind: 'post' | 'term' | 'url';
+  /** Post or term id for `post` / `term` items. */
+  ref?: string;
+  /** For `url` items. */
+  url?: string;
+  children: MenuItem[];
+}
+
+export const menus = pgTable(
+  'menus',
+  {
+    id: id(),
+    siteId: siteRef(),
+    /** Declared by the theme: `primary`, `footer`, ... */
+    location: text().notNull(),
+    items: jsonb().$type<MenuItem[]>().notNull().default([]),
+    updatedAt: updatedAt(),
+  },
+  (t) => [unique().on(t.siteId, t.location), tenantPolicy('menus')],
+).enableRLS();
+
 // --- themes ---------------------------------------------------------------------------------
 // Bundled themes have no site (visible to every site, written only by the owner role at
 // startup); themes made for a site (upload, MCP) belong to it.

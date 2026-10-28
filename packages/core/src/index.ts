@@ -17,3 +17,4 @@ export * from './public/permalinks.js';
 export * from './public/resolve.js';
 export * from './themes/registry.js';
 export * from './public/render.js';
+export * from './content/menus.js';

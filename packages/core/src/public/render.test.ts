@@ -3,7 +3,14 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Actor } from '../content/audit.js';
 import { DocInput } from '../content/input.js';
-import { createPost, PostCreateInput, publishPost } from '../content/posts.js';
+import { MenuUpdateInput, updateMenu } from '../content/menus.js';
+import {
+  createPost,
+  listPosts,
+  PostCreateInput,
+  PostListQuery,
+  publishPost,
+} from '../content/posts.js';
 import { createTerm } from '../content/terms.js';
 import { createDb, runMigrations, withSite, type Db, type Tx } from '../db/client.js';
 import { sites, users } from '../db/schema.js';
@@ -29,7 +36,9 @@ const files = {
   'templates/post.liquid':
     '<h1>{{ post.title }}</h1><p class="by">{{ post.author.name }}</p>{{ post.content }}' +
     '<p class="cat">{{ post.primary_category.name }} {{ post.primary_category.url }}</p>' +
-    '{% for t in post.tags %}<i>{{ t.name }}</i>{% endfor %}<p class="ex">{{ post.excerpt }}</p>',
+    '{% for t in post.tags %}<i>{{ t.name }}</i>{% endfor %}<p class="ex">{{ post.excerpt }}</p>' +
+    '<nav>{% for i in menus.primary.items %}<a{% if i.active %} aria-current="page"{% endif %} href="{{ i.url }}">{{ i.label }}</a>' +
+    '{% for c in i.children %}<a class="sub" href="{{ c.url }}">{{ c.label }}</a>{% endfor %}{% endfor %}</nav>',
   'templates/page.liquid':
     '<h1>{{ page.title }}</h1>{% if page.parent %}<a class="parent" href="{{ page.parent.url }}">{{ page.parent.title }}</a>{% endif %}' +
     '{% for c in page.children %}<a class="child" href="{{ c.url }}">{{ c.title }}</a>{% endfor %}',
@@ -121,6 +130,32 @@ beforeAll(async () => {
     '2026-03-10T09:00:00Z',
   );
   const about = await publish({ type: 'page', title: 'Hakkımızda' }, '2026-01-01T09:00:00Z');
+  const draft = await inSite((tx) =>
+    createPost(tx, siteId, editor, PostCreateInput.parse({ type: 'page', title: 'Taslak' })),
+  );
+  const uc = await inSite(
+    async (tx) => (await listPosts(tx, siteId, PostListQuery.parse({ query: 'Üç' }))).items[0]!,
+  );
+  await inSite((tx) =>
+    updateMenu(
+      tx,
+      siteId,
+      editor,
+      'primary',
+      MenuUpdateInput.parse({
+        items: [
+          {
+            label: 'Haber',
+            kind: 'term',
+            ref: news.id,
+            children: [{ label: 'Üç', kind: 'post', ref: uc.id }],
+          },
+          { label: 'Taslak', kind: 'post', ref: draft.id },
+          { label: 'Dış', kind: 'url', url: 'https://example.org/' },
+        ],
+      }),
+    ),
+  );
   await publish({ type: 'page', title: 'Ekip', parentId: about.id }, '2026-01-01T09:00:00Z');
 });
 
@@ -159,6 +194,14 @@ describe('renderPublic', () => {
     expect(ld).not.toMatch(/[<>]/);
     expect(JSON.parse(ld)).toMatchObject({ '@type': 'BlogPosting', author: { name: 'Ayşe' } });
     expect(await html('/iki/')).toContain('<i>Ekonomi</i>');
+  });
+
+  it('renders menus with live links and the active trail', async () => {
+    const nav = /<nav>(.*?)<\/nav>/s.exec(await html('/uc/'))![1];
+    expect(nav).toBe(
+      '<a aria-current="page" href="/kategori/haber/">Haber</a><a class="sub" href="/uc/">Üç</a>' +
+        '<a href="https://example.org/">Dış</a>',
+    );
   });
 
   it('renders nested pages with parent and children', async () => {
