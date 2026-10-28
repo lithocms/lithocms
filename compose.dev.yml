@@ -38,7 +38,8 @@ services:
     environment:
       DATABASE_URL: postgres://lithocms_app:app@postgres:5432/lithocms
       DATABASE_OWNER_URL: postgres://lithocms_owner:owner@postgres:5432/lithocms
-      ADMIN_DOMAIN: admin.localhost
+      ADMIN_URL: http://admin.localhost:8080
+      AUTH_SECRET: dev-only-secret-dev-only-secret-dev-only
       DEV_SITE_DOMAIN: site.localhost
     volumes: *node-modules
     depends_on:

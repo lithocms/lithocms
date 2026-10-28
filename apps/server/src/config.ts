@@ -8,7 +8,10 @@ const Config = z.object({
   DATABASE_URL: z.url(),
   /** Owner role, used only to run migrations at startup. */
   DATABASE_OWNER_URL: z.url(),
-  ADMIN_DOMAIN: z.string().toLowerCase(),
+  /** Admin origin, e.g. `https://admin.example.com`. */
+  ADMIN_URL: z.url().transform((url) => new URL(url)),
+  /** Signs sessions and encrypts auth secrets (2FA). Generate with `openssl rand -base64 32`. */
+  AUTH_SECRET: z.string().min(32),
 });
 
 export type Config = z.infer<typeof Config>;

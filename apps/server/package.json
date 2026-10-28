@@ -13,7 +13,10 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
+    "@better-auth/passkey": "^1.7.14",
     "@lithocms/core": "workspace:*",
+    "@node-rs/argon2": "^2.2.2",
+    "better-auth": "^1.7.14",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",
     "zod": "^4.6.7"

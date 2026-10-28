@@ -2,6 +2,7 @@ import type { Db } from '@lithocms/core';
 import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
+import { registerAuthRoutes, type Auth } from './auth.js';
 import { normalizeHost, type ResolvedSite, type SiteResolver } from './sites.js';
 
 declare module 'fastify' {
@@ -14,18 +15,22 @@ declare module 'fastify' {
 export interface AppOptions {
   db: Db;
   sites: SiteResolver;
-  adminDomain: string;
+  /** Admin origin; the admin SPA, admin API and auth live only here. */
+  adminUrl: URL;
+  auth: Auth;
   logLevel?: string;
 }
 
 // Answer on any host: container healthchecks and Caddy call them by IP or service name.
 // TODO(phase-4): keep /internal/* and health routes off the public origins at the proxy.
 const INTERNAL_ROUTES = new Set(['/healthz', '/readyz']);
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export function buildApp({
   db,
   sites,
-  adminDomain,
+  adminUrl,
+  auth,
   logLevel = 'info',
 }: AppOptions): FastifyInstance {
   const app = Fastify({
@@ -38,13 +43,19 @@ export function buildApp({
   app.addHook('onRequest', async (request, reply) => {
     if (INTERNAL_ROUTES.has(request.routeOptions.url ?? '')) return;
     const host = normalizeHost(request.hostname);
-    if (host === adminDomain) {
+    if (host === adminUrl.hostname) {
       request.log = request.log.child({ origin: 'admin' });
+      // CSRF: admin API writes only from the admin SPA itself (on top of SameSite=Strict).
+      const write = !SAFE_METHODS.has(request.method) && request.url.startsWith('/api/');
+      if (write && request.headers.origin !== adminUrl.origin) {
+        return reply.code(403).send({ error: 'forbidden_origin' });
+      }
       return;
     }
     const site = sites.resolve(host);
-    // A disabled site is indistinguishable from an unknown host.
-    if (!site || site.status === 'disabled') {
+    // A disabled site is indistinguishable from an unknown host; /api/* exists only on the
+    // admin origin.
+    if (!site || site.status === 'disabled' || request.url.startsWith('/api/')) {
       return reply.code(404).send({ error: 'unknown_host' });
     }
     // TODO(phase-1): theme-rendered maintenance page; let logged-in admins preview.
@@ -68,6 +79,8 @@ export function buildApp({
       return reply.code(503).send({ status: 'unavailable' });
     }
   });
+
+  registerAuthRoutes(app, { auth, db });
 
   // TODO(phase-1): replace with theme rendering (site origins) and the admin SPA (admin origin).
   app.get('/', (request) =>

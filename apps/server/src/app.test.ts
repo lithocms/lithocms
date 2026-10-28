@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
+import { createAuth } from './auth.js';
 import { createSiteResolver, type SiteResolver } from './sites.js';
 
 let tdb: TestDatabase;
@@ -12,6 +13,8 @@ let pool: Pool;
 let sites: SiteResolver;
 let app: FastifyInstance;
 let siteId: string;
+const adminUrl = new URL('https://admin.example.net');
+const secret = 'test-secret-test-secret-test-secret!';
 
 beforeAll(async () => {
   tdb = await startTestDatabase();
@@ -24,7 +27,13 @@ beforeAll(async () => {
     { domain: 'www.example.com', siteId },
   ]);
   sites = await createSiteResolver(db);
-  app = buildApp({ db, sites, adminDomain: 'admin.example.net', logLevel: 'silent' });
+  app = buildApp({
+    db,
+    sites,
+    adminUrl,
+    auth: createAuth({ db, adminUrl, secret }),
+    logLevel: 'silent',
+  });
 });
 
 afterAll(async () => {
@@ -84,7 +93,8 @@ describe('health', () => {
   it('/readyz fails when the database is unreachable', async () => {
     const down = createDb(tdb.appUrl);
     await down.pool.end();
-    const unready = buildApp({ db: down.db, sites, adminDomain: 'a', logLevel: 'silent' });
+    const auth = createAuth({ db: down.db, adminUrl, secret });
+    const unready = buildApp({ db: down.db, sites, adminUrl, auth, logLevel: 'silent' });
     const res = await unready.inject({ method: 'GET', url: '/readyz' });
     expect(res.statusCode).toBe(503);
     await unready.close();

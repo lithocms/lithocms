@@ -65,6 +65,7 @@ pnpm dev              # postgres + server (hot reload) + caddy, all in Docker
 ```
 
 Then open <http://site.localhost:8080> (a seeded dev site) and <http://admin.localhost:8080>.
+The seed also creates a dev admin, `admin@example.com` / `lithocms-dev`, owner of the dev site.
 Postgres is on `127.0.0.1:5432` (owner `lithocms_owner`/`owner`, runtime `lithocms_app`/`app`).
 Reset everything with `docker compose -f compose.dev.yml down -v`.
 
