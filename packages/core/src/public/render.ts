@@ -113,6 +113,8 @@ export async function renderPublic(
   const categories = await categoryTree(tx, site);
   const ctx: Ctx = { tx, site, theme, req, categories };
   const page = (await buildPage(ctx, resolved)) ?? notFound(site);
+  // The site asks search engines to stay away (robots.txt says so too).
+  if (site.settings.search_engines === false) page.seo.noindex = true;
   const status = page.pageType !== '404' ? 200 : redirect ? 410 : 404;
 
   const [logo] = await images(tx, site.id, [setting(site, 'logo')]);
@@ -156,7 +158,8 @@ export async function renderPublic(
     timezone: site.timezone,
     hooks: {
       assetUrl: (path) => theme.assetUrl(path),
-      headExtras: () => '',
+      headExtras: () =>
+        `<link rel="alternate" type="application/rss+xml" title="${escapeHtml(site.name)}" href="${escapeHtml(req.origin)}/feed/">`,
       bodyExtras: () => '',
       seo: () =>
         seoTags(site, { ...page.seo, image: seoImage }, canonical, req.origin, status !== 200),

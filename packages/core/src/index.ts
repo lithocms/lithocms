@@ -23,3 +23,4 @@ export * from './content/fields.js';
 export * from './content/collections.js';
 export * from './content/forms.js';
 export * from './content/redirects.js';
+export * from './public/feeds.js';
