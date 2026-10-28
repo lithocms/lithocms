@@ -79,7 +79,7 @@ const get = (path: string, search?: string) =>
   );
 const html = async (path: string, search?: string) => {
   const res = await get(path, search);
-  if (res.status === 301) throw new Error(`redirected to ${res.location}`);
+  if ('location' in res) throw new Error(`redirected to ${res.location}`);
   return res.html;
 };
 const links = (page: string, cls: string) =>

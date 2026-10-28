@@ -71,6 +71,13 @@
       "when": 1793228614708,
       "tag": "0009_forms",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793230457952,
+      "tag": "0010_redirects",
+      "breakpoints": true
     }
   ]
 }

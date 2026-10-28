@@ -602,6 +602,32 @@ export const formSubmissions = pgTable(
   ],
 ).enableRLS();
 
+// --- redirects ----------------------------------------------------------------------------
+
+export const REDIRECT_SOURCES = ['manual', 'import', 'slug_change'] as const;
+
+export const redirects = pgTable(
+  'redirects',
+  {
+    id: id(),
+    siteId: siteRef(),
+    /** Decoded path, e.g. `/eski-yazı/`; matched with or without the trailing slash. */
+    fromPath: text().notNull(),
+    /** A `/path` or an absolute http(s) URL; empty for 410. */
+    to: text().notNull().default(''),
+    code: integer().notNull().default(301),
+    source: text({ enum: REDIRECT_SOURCES }).notNull().default('manual'),
+    hits: integer().notNull().default(0),
+    lastHitAt: timestamp({ withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique().on(t.siteId, t.fromPath),
+    check('redirects_code', sql`${t.code} in (301, 302, 410)`),
+    tenantPolicy('redirects'),
+  ],
+).enableRLS();
+
 // --- slots --------------------------------------------------------------------------------
 
 /** Admin-managed raw HTML for places the theme declares (ads, analytics, banners). */

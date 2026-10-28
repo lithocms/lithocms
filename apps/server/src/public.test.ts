@@ -2,10 +2,12 @@ import {
   createDb,
   createDiskStore,
   createPost,
+  createRedirect,
   formToken,
   FormUpsertInput,
   PostCreateInput,
   publishPost,
+  RedirectInput,
   runMigrations,
   schema,
   upsertForm,
@@ -72,6 +74,14 @@ beforeAll(async () => {
       PostCreateInput.parse({ type: 'page', title: 'İletişim' }),
     );
     await publishPost(tx, siteA, admin, page.id);
+    for (const r of [
+      { fromPath: '/eski-iletisim/', to: '/iletisim/' },
+      { fromPath: '/kampanya', to: 'https://shop.example/sale', code: 302 },
+      { fromPath: '/kaldirildi/', code: 410 },
+      { fromPath: '/çay/', to: '/çaylar/' },
+    ]) {
+      await createRedirect(tx, siteA, admin, RedirectInput.parse(r));
+    }
     await upsertForm(
       tx,
       siteA,
@@ -216,5 +226,23 @@ describe('forms', () => {
         .statusCode,
     ).toBe(404);
     expect((await post({ email: 'a@b.co' }, {}, adminUrl.hostname)).statusCode).toBe(404);
+  });
+});
+
+describe('redirects', () => {
+  it.each([
+    ['/eski-iletisim/', 301, 'https://a.example/iletisim/'],
+    ['/kampanya/', 302, 'https://shop.example/sale'],
+    ['/%C3%A7ay/', 301, 'https://a.example/%C3%A7aylar/'],
+  ])('%s', async (url, code, location) => {
+    const res = await get('a.example', url);
+    expect(res.statusCode).toBe(code);
+    expect(res.headers.location).toBe(location);
+  });
+
+  it('answers removed URLs with 410 and the 404 template', async () => {
+    const res = await get('a.example', '/kaldirildi/');
+    expect(res.statusCode).toBe(410);
+    expect(res.body).toContain('<h1>Not found</h1>');
   });
 });
