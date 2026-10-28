@@ -9,15 +9,20 @@ import {
   DomainError,
   EntryInput,
   EntryListQuery,
+  FormKey,
+  FormUpsertInput,
   getCollection,
+  getForm,
   getMedia,
   getMenu,
   getPost,
   listCollections,
   listEntries,
+  listForms,
   listMedia,
   listMenus,
   listSlots,
+  listSubmissions,
   listPosts,
   listRevisions,
   listTerms,
@@ -35,6 +40,8 @@ import {
   schema,
   SlotKey,
   SlotUpdateInput,
+  SubmissionListQuery,
+  SubmissionUpdateInput,
   TermCreateInput,
   TermListQuery,
   TermUpdateInput,
@@ -44,11 +51,13 @@ import {
   updateMedia,
   updateMenu,
   updateSlot,
+  updateSubmission,
   updatePost,
   updateTerm,
   ValidationFailed,
   uploadMedia,
   upsertEntry,
+  upsertForm,
   withSite,
   type Actor,
   type Db,
@@ -62,9 +71,9 @@ import {
   validatorCompiler,
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { getSessionUser, type Auth } from './auth.js';
+import { ipHash } from './client-ip.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -85,6 +94,7 @@ const Location = z.strictObject({ siteId: z.uuid(), location: MenuLocation });
 const Key = z.strictObject({ siteId: z.uuid(), key: SlotKey });
 const CollectionParams = z.strictObject({ siteId: z.uuid(), key: CollectionKey });
 const EntryParams = CollectionParams.extend({ id: z.uuid() });
+const FormParams = z.strictObject({ siteId: z.uuid(), key: FormKey });
 const UploadQuery = z.strictObject({
   filename: z.string().min(1).max(255),
   alt: z.string().max(500).optional(),
@@ -151,7 +161,7 @@ export function registerApi(
           role,
           channel: 'admin',
           siteId,
-          ipHash: ipHash(request),
+          ipHash: ipHash(request, secret),
         };
       });
 
@@ -304,6 +314,33 @@ export function registerApi(
         },
       );
 
+      // forms and their submissions (admins)
+      api.get('/forms', (req) => run(req, (tx, siteId) => listForms(tx, siteId)));
+      api.get('/forms/:key', { schema: { params: FormParams } }, (req) =>
+        run(req, (tx, siteId) => getForm(tx, siteId, req.params.key)),
+      );
+      api.put('/forms/:key', { schema: { params: FormParams, body: FormUpsertInput } }, (req) =>
+        run(req, (tx, siteId, actor) => upsertForm(tx, siteId, actor, req.params.key, req.body)),
+      );
+      api.get(
+        '/forms/:key/submissions',
+        { schema: { params: FormParams, querystring: SubmissionListQuery } },
+        (req) =>
+          run(req, (tx, siteId, actor) =>
+            listSubmissions(tx, siteId, actor, req.params.key, req.query),
+          ),
+      );
+      api.patch(
+        '/submissions/:id',
+        { schema: { params: Id, body: SubmissionUpdateInput } },
+        async (req, reply) => {
+          await run(req, (tx, siteId, actor) =>
+            updateSubmission(tx, siteId, actor, req.params.id, req.body.status),
+          );
+          return reply.code(204).send();
+        },
+      );
+
       // slots: raw HTML, admins only
       api.get('/slots', (req) => run(req, (tx, siteId) => listSlots(tx, siteId)));
       api.put('/slots/:key', { schema: { params: Key, body: SlotUpdateInput } }, (req) =>
@@ -314,16 +351,6 @@ export function registerApi(
     },
     { prefix: '/api/sites/:siteId' },
   );
-
-  function ipHash(request: FastifyRequest): string {
-    // Caddy replaces X-Forwarded-For with the real client address (same assumption as auth).
-    const forwarded = request.headers['x-forwarded-for'];
-    const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
-    return createHash('sha256')
-      .update(`${secret}:${ip ?? request.ip}`)
-      .digest('base64url')
-      .slice(0, 22);
-  }
 }
 
 /** The user's role on a site; instance owners act as owners everywhere. */

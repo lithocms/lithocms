@@ -21,3 +21,4 @@ export * from './content/menus.js';
 export * from './content/slots.js';
 export * from './content/fields.js';
 export * from './content/collections.js';
+export * from './content/forms.js';

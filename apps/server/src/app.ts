@@ -97,7 +97,7 @@ export function buildApp({
   registerApi(app, { db, auth, secret, store });
   registerMediaFiles(app, store);
   // TODO(phase-1): the admin SPA on the admin origin.
-  registerPublic(app, { db, themes, adminUrl });
+  registerPublic(app, { db, themes, adminUrl, secret });
 
   return app;
 }

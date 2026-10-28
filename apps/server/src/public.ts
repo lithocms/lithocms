@@ -1,5 +1,14 @@
-import { renderPublic, siteThemeVersion, withSite, type Db } from '@lithocms/core';
+import {
+  NotFound,
+  renderPublic,
+  siteThemeVersion,
+  submitForm,
+  ValidationFailed,
+  withSite,
+  type Db,
+} from '@lithocms/core';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { ipHash } from './client-ip.js';
 import { normalizeHost, type ResolvedSite } from './sites.js';
 import type { LoadedTheme, ThemeSet } from './themes.js';
 
@@ -41,7 +50,7 @@ function contentSecurityPolicy(allow: string[]): string {
 /** Theme-rendered pages and theme assets, on site origins only. */
 export function registerPublic(
   app: FastifyInstance,
-  { db, themes, adminUrl }: { db: Db; themes: ThemeSet; adminUrl: URL },
+  { db, themes, adminUrl, secret }: { db: Db; themes: ThemeSet; adminUrl: URL; secret: string },
 ) {
   const originOf = (site: ResolvedSite) =>
     `${adminUrl.protocol}//${site.primaryDomain}${adminUrl.port ? `:${adminUrl.port}` : ''}`;
@@ -78,13 +87,21 @@ export function registerPublic(
       request.log.error('no renderable theme for site');
       return reply.code(503).type('text/plain').send('This site has no theme yet.');
     }
+    const params = new URLSearchParams(query);
     // `?s=` is search on the home URL only, as in WordPress.
-    const search = path === '/' ? new URLSearchParams(query).get('s') : null;
+    const search = path === '/' ? params.get('s') : null;
+    const formKey = params.get(FORM_PARAM);
+    const formStatus = params.get(FORM_STATUS_PARAM);
     const res = await withSite(db, site.id, (tx) =>
       renderPublic(tx, site.id, theme, {
         path,
         search: search ?? undefined,
         origin: originOf(site),
+        secret,
+        formStatus:
+          formKey && (formStatus === 'sent' || formStatus === 'error')
+            ? { key: formKey, status: formStatus }
+            : undefined,
       }),
     );
     // Always absolute on the site's own origin.
@@ -101,4 +118,55 @@ export function registerPublic(
 
   app.get('/', page);
   app.get('/*', page);
+
+  // Core-rendered forms post here (no JavaScript needed), then go back to the page they were
+  // on with the result. Bot-like posts look like success to the sender.
+  void app.register((scope, _opts, done) => {
+    scope.addContentTypeParser(
+      'application/x-www-form-urlencoded',
+      { parseAs: 'string', bodyLimit: 64 * 1024 },
+      (_req, body, done) => {
+        done(null, Object.fromEntries(new URLSearchParams(body as string)));
+      },
+    );
+    scope.post('/_forms/:key', async (request, reply) => {
+      const site = request.site;
+      if (!site) return reply.code(404).send({ error: 'not_found' });
+      const { key } = request.params as { key: string };
+      const body = (request.body ?? {}) as Record<string, string>;
+      let status: 'sent' | 'error' = 'sent';
+      try {
+        await withSite(db, site.id, (tx) =>
+          submitForm(tx, site.id, key, body, { secret, ipHash: ipHash(request, secret) }),
+        );
+      } catch (err) {
+        if (err instanceof NotFound) return reply.code(404).send({ error: 'not_found' });
+        if (!(err instanceof ValidationFailed)) throw err;
+        status = 'error';
+      }
+      const back = new URL(returnPath(request, site), originOf(site));
+      back.searchParams.set(FORM_PARAM, key);
+      back.searchParams.set(FORM_STATUS_PARAM, status);
+      back.hash = `form-${key}`;
+      return reply.redirect(back.toString(), 303);
+    });
+    done();
+  });
+}
+
+const FORM_PARAM = 'litho_form';
+const FORM_STATUS_PARAM = 'litho_status';
+
+/** The page the form was on, from Referer, only if it is this site; else the home page. */
+function returnPath(request: FastifyRequest, site: ResolvedSite): string {
+  try {
+    const referer = new URL(request.headers.referer ?? '');
+    if (normalizeHost(referer.hostname) !== site.primaryDomain) return '/';
+    // Drop an earlier form result from the query.
+    referer.searchParams.delete(FORM_PARAM);
+    referer.searchParams.delete(FORM_STATUS_PARAM);
+    return referer.pathname.startsWith('//') ? '/' : referer.pathname + referer.search;
+  } catch {
+    return '/';
+  }
 }

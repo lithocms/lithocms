@@ -537,6 +537,71 @@ export const collectionEntries = pgTable(
   ],
 ).enableRLS();
 
+// --- forms --------------------------------------------------------------------------------
+
+export const FORM_FIELD_TYPES = [
+  'text',
+  'textarea',
+  'email',
+  'tel',
+  'number',
+  'select',
+  'checkbox',
+  'date',
+] as const;
+export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
+
+export interface FormField {
+  key: string;
+  label: string | Record<string, string>;
+  type: FormFieldType;
+  required?: boolean;
+  /** `select` only. */
+  options?: { value: string; label?: string | Record<string, string> }[];
+}
+
+/** Contact-style forms rendered by core (`{% form 'key' %}`); themes style them, never replace them. */
+export const forms = pgTable(
+  'forms',
+  {
+    id: id(),
+    siteId: siteRef(),
+    key: text().notNull(),
+    fields: jsonb().$type<FormField[]>().notNull(),
+    notifyEmails: text().array().notNull().default([]),
+    successMessage: text().notNull().default(''),
+    /** When set, a required consent checkbox with this text (KVKK/GDPR). */
+    consentText: text().notNull().default(''),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [unique().on(t.siteId, t.key), unique().on(t.siteId, t.id), tenantPolicy('forms')],
+).enableRLS();
+
+export const SUBMISSION_STATUSES = ['new', 'read', 'spam'] as const;
+
+export const formSubmissions = pgTable(
+  'form_submissions',
+  {
+    id: id(),
+    siteId: siteRef(),
+    formId: uuid().notNull(),
+    data: jsonb().$type<Record<string, string | number | boolean>>().notNull(),
+    ipHash: text(),
+    status: text({ enum: SUBMISSION_STATUSES }).notNull().default('new'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.siteId, t.formId],
+      foreignColumns: [forms.siteId, forms.id],
+    }).onDelete('cascade'),
+    index().on(t.formId, t.createdAt.desc()),
+    index().on(t.formId, t.ipHash, t.createdAt),
+    tenantPolicy('form_submissions'),
+  ],
+).enableRLS();
+
 // --- slots --------------------------------------------------------------------------------
 
 /** Admin-managed raw HTML for places the theme declares (ads, analytics, banners). */
