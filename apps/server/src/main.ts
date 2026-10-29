@@ -1,3 +1,4 @@
+import { loadAdminApp } from './admin-app.js';
 import { createDb, createDiskStore, runMigrations, schema } from '@lithocms/core';
 import { buildApp } from './app.js';
 import { createAuth } from './auth.js';
@@ -43,6 +44,7 @@ const app = buildApp({
   themes,
   jobs,
   cache,
+  admin: await loadAdminApp(config.ADMIN_DIR),
   logLevel: config.LOG_LEVEL,
 });
 

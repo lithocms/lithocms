@@ -21,6 +21,7 @@ import {
   getMedia,
   getMenu,
   getPost,
+  getSiteSettings,
   listCollections,
   listEntries,
   listForms,
@@ -61,6 +62,8 @@ import {
   updateMedia,
   updateMenu,
   updateSlot,
+  updateSiteSettings,
+  SiteSettingsInput,
   updateThemeSection,
   updateThemeSettings,
   updateSubmission,
@@ -468,6 +471,12 @@ export function registerApi(
             req.body,
           );
         }),
+      );
+
+      // general settings (admins write)
+      api.get('/settings', (req) => run(req, (tx, siteId) => getSiteSettings(tx, siteId)));
+      api.patch('/settings', { schema: { body: SiteSettingsInput } }, (req) =>
+        run(req, (tx, siteId, actor) => updateSiteSettings(tx, siteId, actor, req.body)),
       );
 
       // slots: raw HTML, admins only

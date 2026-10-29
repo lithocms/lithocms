@@ -334,6 +334,42 @@ describe('admin API', () => {
   });
 });
 
+describe('settings', () => {
+  it('reads for members, writes for admins, validated', async () => {
+    expect((await call('editor', 'GET', a('/settings'))).json()).toMatchObject({
+      name: 'A',
+      searchEngines: true,
+    });
+    expect((await call('editor', 'PATCH', a('/settings'), { name: 'B' })).statusCode).toBe(403);
+    for (const bad of [
+      { timezone: 'Mars/Base' },
+      { locale: 'xx' },
+      { social: { x: 'javascript:alert(1)' } },
+      { name: '' },
+      { unknown: 1 },
+    ]) {
+      expect(
+        (await call('root', 'PATCH', a('/settings'), bad)).statusCode,
+        JSON.stringify(bad),
+      ).toBe(400);
+    }
+    const res = await call('root', 'PATCH', a('/settings'), {
+      tagline: 'Haberler',
+      timezone: 'Europe/Istanbul',
+      social: { instagram: 'https://instagram.com/a' },
+      searchEngines: false,
+    });
+    expect(res.json()).toMatchObject({
+      name: 'A',
+      tagline: 'Haberler',
+      timezone: 'Europe/Istanbul',
+      social: { instagram: 'https://instagram.com/a' },
+      searchEngines: false,
+    });
+    expect((await call('outsider', 'PATCH', a('/settings'), { name: 'X' })).statusCode).toBe(404);
+  });
+});
+
 describe('theme', () => {
   it('lists the active theme with its settings and sections', async () => {
     const res = await call('editor', 'GET', a('/theme'));
