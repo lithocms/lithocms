@@ -19,6 +19,8 @@ FROM node:${NODE_VERSION}-slim
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /out .
+COPY --from=build /src/themes ./themes
+COPY --from=build /src/licenses ./licenses
 # Mount the media and cache volumes here.
 RUN mkdir -p /data/media /data/cache && chown node:node /data/media /data/cache
 USER node

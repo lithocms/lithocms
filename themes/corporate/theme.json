@@ -1,0 +1,99 @@
+{
+  "name": "Corporate",
+  "slug": "corporate",
+  "version": "0.1.0",
+  "author": "LithoCMS",
+  "license": "AGPL-3.0-only",
+  "engine": ">=0.1.0",
+  "description": "Type-led theme for schools, firms and small institutions: section-built home page, programmes, schedule, FAQ, contact form and a WhatsApp button.",
+  "tokens": {
+    "colors": {
+      "bg": "#f2f2f2",
+      "surface": "#e4e4e2",
+      "fg": "#111111",
+      "muted": "#575757",
+      "accent": "#a08672",
+      "inverse": "#111111",
+      "inverse-fg": "#f2f2f2"
+    },
+    "fonts": {
+      "display": "'Bebas Neue', 'Arial Narrow', sans-serif-condensed, sans-serif",
+      "body": "'EB Garamond', Garamond, Georgia, serif"
+    },
+    "radius": "0",
+    "content_width": "68ch"
+  },
+  "settings": [
+    {
+      "id": "accent",
+      "type": "color",
+      "default": "#a08672",
+      "label": { "tr": "Vurgu rengi", "en": "Accent colour" }
+    },
+    {
+      "id": "bg",
+      "type": "color",
+      "default": "#f2f2f2",
+      "label": { "tr": "Zemin rengi", "en": "Background colour" }
+    },
+    {
+      "id": "inverse",
+      "type": "color",
+      "default": "#111111",
+      "label": { "tr": "Koyu bölüm rengi", "en": "Dark section colour" }
+    },
+    {
+      "id": "cta_label",
+      "type": "text",
+      "label": { "tr": "Üst bağlantı metni", "en": "Header action label" }
+    },
+    {
+      "id": "cta_url",
+      "type": "url",
+      "label": { "tr": "Üst bağlantı adresi", "en": "Header action link" }
+    },
+    { "id": "phone", "type": "text", "label": { "tr": "Telefon", "en": "Phone" } },
+    { "id": "email", "type": "text", "label": { "tr": "E-posta", "en": "Email" } },
+    { "id": "address", "type": "textarea", "label": { "tr": "Adres", "en": "Address" } },
+    {
+      "id": "whatsapp_number",
+      "type": "text",
+      "label": {
+        "tr": "WhatsApp numarası (ülke koduyla, ör. 905551234567)",
+        "en": "WhatsApp number (with country code, e.g. 905551234567)"
+      }
+    },
+    {
+      "id": "whatsapp_message",
+      "type": "text",
+      "label": { "tr": "WhatsApp hazır mesaj", "en": "WhatsApp prefilled message" }
+    },
+    {
+      "id": "footer_note",
+      "type": "textarea",
+      "label": { "tr": "Alt bilgi notu", "en": "Footer note" }
+    }
+  ],
+  "menus": [
+    { "location": "primary", "label": { "tr": "Ana menü", "en": "Main menu" } },
+    { "location": "footer", "label": { "tr": "Alt menü", "en": "Footer menu" } },
+    { "location": "legal", "label": { "tr": "Yasal bağlantılar", "en": "Legal links" } }
+  ],
+  "slots": [
+    {
+      "key": "head",
+      "label": { "tr": "Head kodu (analitik vb.)", "en": "Head code (analytics etc.)" }
+    },
+    { "key": "footer", "label": { "tr": "Sayfa sonu kodu", "en": "End of page code" } }
+  ],
+  "collections": ["testimonials", "faq", "branches"],
+  "supports": { "comments": false, "search": true, "dark_mode": false },
+  "page_templates": [
+    {
+      "key": "page.landing",
+      "label": { "tr": "Bölümlü sayfa", "en": "Section page" },
+      "sections": true
+    },
+    { "key": "page.contact", "label": { "tr": "İletişim", "en": "Contact" } }
+  ]
+}

@@ -1,0 +1,20 @@
+<article class="block contact-page">
+  <header class="article-head">
+    <h1 class="head">{{ page.title }}</h1>
+    {%- if page.excerpt != blank -%}<p class="lead">{{ page.excerpt }}</p>{%- endif -%}
+  </header>
+  <div class="contact-grid">
+    <div class="prose">
+      {{ page.content }}
+      <dl class="contact-list">
+        {%- if theme.settings.phone != blank -%}<dt>{{ 'call' | t }}</dt><dd><a href="tel:{{ theme.settings.phone | remove: ' ' }}">{{ theme.settings.phone }}</a></dd>{%- endif -%}
+        {%- if theme.settings.email != blank -%}<dt>{{ 'write' | t }}</dt><dd><a href="mailto:{{ theme.settings.email }}">{{ theme.settings.email }}</a></dd>{%- endif -%}
+        {%- if theme.settings.address != blank -%}<dt>{{ 'visit' | t }}</dt><dd>{{ theme.settings.address | newline_to_br }}</dd>{%- endif -%}
+      </dl>
+    </div>
+    <div class="contact-form">
+      <h2 class="subhead">{{ 'contact_form' | t }}</h2>
+      {% form 'contact' %}
+    </div>
+  </div>
+</article>

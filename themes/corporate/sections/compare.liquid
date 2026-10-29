@@ -1,0 +1,26 @@
+{%- assign s = section.settings -%}
+{%- if s.left_value != blank and s.right_value != blank -%}
+<section class="block compare" id="compare">
+  <div class="compare-top rise">
+    <h2 class="subhead">{{ s.heading }}</h2>
+    {%- if s.text != blank -%}<p>{{ s.text }}</p>{%- endif -%}
+  </div>
+  <div class="compare-pair">
+    <figure class="compare-one rise"><p class="compare-value">{{ s.left_value }}</p><figcaption>{{ s.left_caption }}</figcaption></figure>
+    <figure class="compare-two rise"><p class="compare-value">{{ s.right_value }}</p><figcaption>{{ s.right_caption }}</figcaption></figure>
+  </div>
+</section>
+{%- endif -%}
+{% schema %}
+{
+  "name": { "tr": "İki değer karşılaştırması", "en": "Two values compared" },
+  "settings": [
+    { "id": "heading", "type": "text", "label": { "tr": "Başlık", "en": "Heading" } },
+    { "id": "text", "type": "textarea", "label": { "tr": "Açıklama", "en": "Explanation" } },
+    { "id": "left_caption", "type": "text", "label": { "tr": "Sol etiket", "en": "Left caption" } },
+    { "id": "left_value", "type": "text", "label": { "tr": "Sol değer (kısa)", "en": "Left value (short)" } },
+    { "id": "right_caption", "type": "text", "label": { "tr": "Sağ etiket", "en": "Right caption" } },
+    { "id": "right_value", "type": "text", "label": { "tr": "Sağ değer (kısa)", "en": "Right value (short)" } }
+  ]
+}
+{% endschema %}
