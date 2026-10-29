@@ -203,6 +203,33 @@ export const memberships = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.siteId] }), index().on(t.siteId)],
 );
 
+export const MCP_SCOPES = ['content', 'design', 'admin'] as const;
+export type McpScope = (typeof MCP_SCOPES)[number];
+
+/**
+ * Personal access tokens for MCP clients (Claude Code, scripts): one user × one site × scopes.
+ * Instance-level like memberships: a token is looked up by its hash before the site is known.
+ */
+export const mcpTokens = pgTable(
+  'mcp_tokens',
+  {
+    id: id(),
+    userId: userRef(),
+    siteId: uuid()
+      .notNull()
+      .references(() => sites.id, { onDelete: 'cascade' }),
+    name: text().notNull(),
+    scopes: text({ enum: MCP_SCOPES }).array().notNull(),
+    /** sha256 of the token; the token itself is shown once. */
+    tokenHash: text().notNull().unique(),
+    lastUsedAt: timestamp({ withTimezone: true }),
+    expiresAt: timestamp({ withTimezone: true }),
+    revokedAt: timestamp({ withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index().on(t.userId, t.siteId)],
+);
+
 export const CHANNELS = ['admin', 'mcp', 'api', 'import', 'system'] as const;
 export type Channel = (typeof CHANNELS)[number];
 

@@ -40,6 +40,7 @@ export function purgeTagsFor(entry: {
     case 'form_submission':
     case 'theme_version':
     case 'theme_package':
+    case 'mcp_token':
       return [];
     case 'media':
       return entry.action === 'media.upload' ? [] : 'all';

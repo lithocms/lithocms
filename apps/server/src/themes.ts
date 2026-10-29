@@ -27,6 +27,8 @@ export interface LoadedTheme extends Omit<PublicTheme, 'themeId'> {
 export interface ThemeSet {
   /** Bundled slugs to fall back to, in order, when a site has no active theme. */
   defaults: string[];
+  /** The starter theme's README: the theme authoring guide served to MCP clients. */
+  authoringGuide: string;
   get(storagePath: string): Promise<LoadedTheme | undefined>;
   /** The files of a version (bundled or uploaded). */
   files(storagePath: string): Promise<ThemeBundle | undefined>;
@@ -73,6 +75,7 @@ export async function loadBundledThemes(
 ): Promise<ThemeSet> {
   const loaded = new Map<string, LoadedTheme>();
   const bundles = new Map<string, ThemeBundle>();
+  let authoringGuide = 'The theme authoring guide ships with the starter theme, which is missing.';
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
   for (const entry of entries.filter((e) => e.isDirectory())) {
     const bundle = await readBundle(join(dir, entry.name));
@@ -96,9 +99,12 @@ export async function loadBundledThemes(
     }
     loaded.set(version.storagePath, loadTheme(bundle));
     bundles.set(version.storagePath, bundle);
+    if (entry.name === 'starter' && typeof bundle['README.md'] === 'string') {
+      authoringGuide = bundle['README.md'];
+    }
   }
   log.info({ themes: [...loaded.keys()] }, 'bundled themes loaded');
-  return { defaults, ...uploadedThemes(storeDir, loaded, bundles) };
+  return { defaults, authoringGuide, ...uploadedThemes(storeDir, loaded, bundles) };
 }
 
 /** Uploaded versions live under `storeDir` as `sites/<siteId>/<random>/`. */
@@ -106,7 +112,7 @@ function uploadedThemes(
   storeDir: string,
   bundled: Map<string, LoadedTheme>,
   bundledFiles: Map<string, ThemeBundle>,
-): Omit<ThemeSet, 'defaults'> {
+): Omit<ThemeSet, 'defaults' | 'authoringGuide'> {
   const root = resolve(storeDir);
   const uploads = new Map<string, LoadedTheme>();
   const dirOf = (storagePath: string) => {

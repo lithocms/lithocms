@@ -4,10 +4,10 @@
 }
 
 :80 {
-	# The admin SPA comes from the Vite dev server (hot reload); its API from the app.
+	# The admin SPA comes from the Vite dev server (hot reload); its API and MCP from the app.
 	@admin-ui {
 		host admin.localhost
-		not path /api/*
+		not path /api/* /mcp
 	}
 	handle @admin-ui {
 		reverse_proxy admin:5173
