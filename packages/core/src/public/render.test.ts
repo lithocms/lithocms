@@ -20,7 +20,7 @@ import {
   PostListQuery,
   publishPost,
 } from '../content/posts.js';
-import { createTerm } from '../content/terms.js';
+import { createTerm, listTerms, updateTerm, updateTermFields } from '../content/terms.js';
 import { createDb, runMigrations, withSite, type Db, type Tx } from '../db/client.js';
 import { sites, users } from '../db/schema.js';
 import { startTestDatabase, type TestDatabase } from '../testing/postgres.js';
@@ -53,7 +53,8 @@ const files = {
     '{% for c in page.children %}<a class="child" href="{{ c.url }}">{{ c.title }}</a>{% endfor %}',
   'templates/category.liquid':
     '<h1>{{ term.name }} ({{ term.post_count }})</h1>{% for a in term.ancestors %}<b>{{ a.name }}</b>{% endfor %}' +
-    '{% for p in posts %}<a class="post" href="{{ p.url }}">{{ p.title }}</a>{% endfor %}',
+    '{% for p in posts %}<a class="post" href="{{ p.url }}">{{ p.title }}</a>{% endfor %}' +
+    '<i class="meta">{{ term.meta.color }}|{{ term.meta.lead }}|{{ term.meta.gone }}</i>',
   'templates/search.liquid':
     '<h1>{{ search.terms }}</h1>{% slot "ad" %}{% slot "off" %}{% slot "none" %}' +
     '<p class="found">{{ search.results_count }}:{% for p in search.results %} {{ p.title }}{% endfor %}</p>' +
@@ -231,6 +232,33 @@ describe('renderPublic', () => {
     const child = await html('/kategori/haber/dunya/');
     expect(child).toContain('<h1>Dünya (2)</h1><b>Haber</b>');
     expect(links(child, 'post')).toEqual(['/uc/', '/iki/']);
+  });
+
+  it('renders term meta through the taxonomy field schema', async () => {
+    const [haber] = await inSite((tx) =>
+      listTerms(tx, siteId, { taxonomy: 'category', query: 'Haber' }),
+    );
+    await inSite(async (tx) => {
+      await updateTermFields(tx, siteId, editor, 'category', [
+        { key: 'color', label: 'Renk', type: 'text' },
+        { key: 'lead', label: 'Giriş', type: 'richtext' },
+      ]);
+      await updateTerm(tx, siteId, editor, haber!.id, {
+        meta: {
+          color: '<red>',
+          lead: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Son' }] }],
+          },
+        },
+      });
+      // The field becomes a number: the stored text is no longer valid.
+      await updateTermFields(tx, siteId, editor, 'category', [
+        { key: 'color', label: 'Renk', type: 'number' },
+        { key: 'lead', label: 'Giriş', type: 'richtext' },
+      ]);
+    });
+    expect(await html('/kategori/haber/')).toContain('<i class="meta">|<p>Son</p>|</i>');
   });
 
   it('renders date archives with the index template as fallback', async () => {
