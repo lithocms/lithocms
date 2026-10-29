@@ -42,6 +42,8 @@ export interface McpContext {
   themeDefaults: string[];
   themes: ThemeStore;
   guides: { themeAuthoring: string };
+  /** Records an unexpected error (the client only gets a generic one). */
+  logError: (err: unknown) => void;
   /** SSRF-safe fetch for media from a URL. */
   fetchUrl: (url: string, maxBytes: number) => Promise<SafeFetchResponse>;
 }

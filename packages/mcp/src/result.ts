@@ -22,11 +22,14 @@ export function parse<S extends z.ZodType>(schema: S, value: unknown, path: stri
 }
 
 /**
- * Wraps a tool body: its value becomes JSON text; domain errors become tool errors with a
- * stable `code` (MCP_SPEC.md) Claude can act on. Anything else is a bug and propagates.
+ * Wraps tool bodies: a value becomes JSON text; domain errors become tool errors with a stable
+ * `code` (MCP_SPEC.md) Claude can act on. Anything else is logged and answered with a generic
+ * `internal` error, so server details never reach the client.
  */
-export function tool<A>(fn: (args: A) => Promise<unknown>) {
-  return async (args: A): Promise<ToolResult> => {
+export const toolFor =
+  (logError: (err: unknown) => void) =>
+  <A>(fn: (args: A) => Promise<unknown>) =>
+  async (args: A): Promise<ToolResult> => {
     try {
       return json(await fn(args));
     } catch (e) {
@@ -40,7 +43,10 @@ export function tool<A>(fn: (args: A) => Promise<unknown>) {
           isError: true,
         };
       }
-      throw e;
+      logError(e);
+      return {
+        ...json({ code: 'internal', message: 'Something went wrong on the server; try again' }),
+        isError: true,
+      };
     }
   };
-}

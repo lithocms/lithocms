@@ -88,6 +88,7 @@ export function registerMcp(
         themeDefaults: themes.defaults,
         themes: themeService,
         guides: { themeAuthoring: themes.authoringGuide },
+        logError: (err) => request.log.error({ err }, 'MCP tool failed'),
         fetchUrl: (url, maxBytes) => safeFetch(url, { maxBytes, timeoutMs: 20_000 }),
       },
       VERSION,
