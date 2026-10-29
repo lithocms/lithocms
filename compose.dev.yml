@@ -2,6 +2,9 @@
 # http://admin.localhost:8080 (admin@example.com / lithocms-dev). Sources are mounted; the server
 # restarts and the admin reloads on change.
 # Outgoing mail is caught by Mailpit: http://localhost:8025.
+# Checks and other tooling run in a throwaway container, nothing is installed on the host:
+#   docker compose -f compose.dev.yml run --rm tools pnpm lint
+#   docker compose -f compose.dev.yml run --rm tools sh -c "pnpm typecheck && pnpm test"
 name: lithocms-dev
 
 x-node-modules: &node-modules
@@ -73,6 +76,40 @@ services:
     volumes: *node-modules
     depends_on:
       app: { condition: service_healthy }
+
+  # One-off commands (lint, typecheck, tests, drizzle-kit): `run --rm tools <command>`.
+  tools:
+    image: node:26-slim
+    profiles: [tools]
+    working_dir: /src
+    entrypoint:
+      - sh
+      - -c
+      - npm install -g --silent pnpm@12.16.1 && pnpm install --frozen-lockfile --store-dir /pnpm-store --reporter silent && exec "$$@"
+      - tools
+    environment:
+      TEST_POSTGRES_URL: postgres://postgres:postgres@test-postgres:5432/lithocms
+    volumes: *node-modules
+    depends_on:
+      test-postgres: { condition: service_healthy }
+
+  # Throwaway Postgres for the test suite (in memory, gone with `down`).
+  test-postgres:
+    image: postgres:18-alpine
+    profiles: [tools]
+    command: ['-c', 'max_connections=1000', '-c', 'fsync=off']
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lithocms
+      LITHO_DB_OWNER_PASSWORD: owner
+      LITHO_DB_APP_PASSWORD: app
+    tmpfs: [/var/lib/postgresql]
+    volumes:
+      - ./deploy/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres', '-d', 'lithocms']
+      interval: 2s
+      retries: 30
 
   mailpit:
     image: axllent/mailpit:v1.29
