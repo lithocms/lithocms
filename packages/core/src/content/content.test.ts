@@ -21,7 +21,14 @@ import {
   updatePost,
 } from './posts.js';
 import { slugify } from './slug.js';
-import { createTerm, listTerms, termFields, updateTerm, updateTermFields } from './terms.js';
+import {
+  createTerm,
+  deleteTerm,
+  listTerms,
+  termFields,
+  updateTerm,
+  updateTermFields,
+} from './terms.js';
 
 let tdb: TestDatabase;
 let db: Db;
@@ -308,6 +315,27 @@ describe('terms', () => {
     await expect(
       t({ taxonomy: 'category', name: 'PC', parentId: games.id }),
     ).rejects.toBeInstanceOf(Conflict);
+  });
+
+  it('deletes terms only once their subcategories are gone, and only for editors', async () => {
+    const t = (input: Parameters<typeof createTerm>[3]) =>
+      inA((tx) => createTerm(tx, siteA, actors.editor, input));
+    const parent = await t({ taxonomy: 'category', name: 'Old section' });
+    const child = await t({ taxonomy: 'category', name: 'Old child', parentId: parent.id });
+    await expect(
+      inA((tx) => deleteTerm(tx, siteA, actors.editor, parent.id)),
+    ).rejects.toBeInstanceOf(Conflict);
+    await expect(
+      inA((tx) => deleteTerm(tx, siteA, actors.author, child.id)),
+    ).rejects.toBeInstanceOf(Forbidden);
+    await expect(
+      withSite(db, siteB, (tx) => deleteTerm(tx, siteB, actors.editor, child.id)),
+    ).rejects.toBeInstanceOf(NotFound);
+
+    await inA((tx) => deleteTerm(tx, siteA, actors.editor, child.id));
+    await inA((tx) => deleteTerm(tx, siteA, actors.editor, parent.id));
+    const left = await inA((tx) => listTerms(tx, siteA, { taxonomy: 'category' }));
+    expect(left.map((x) => x.id)).not.toContain(parent.id);
   });
 
   it('validates meta against the taxonomy field schema', async () => {

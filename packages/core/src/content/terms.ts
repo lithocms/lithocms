@@ -206,6 +206,25 @@ export async function updateTerm(
   return row!;
 }
 
+/** Deletes a term; its posts lose it. A category with subcategories must be emptied first. */
+export async function deleteTerm(tx: Tx, siteId: string, actor: Actor, id: string): Promise<void> {
+  if (!can(actor.role, 'term.manage')) throw new Forbidden('Only editors can manage terms');
+  const current = await getTerm(tx, siteId, id);
+  const [child] = await tx
+    .select({ id: terms.id })
+    .from(terms)
+    .where(and(eq(terms.siteId, siteId), eq(terms.parentId, id)))
+    .limit(1);
+  if (child) throw new Conflict('Move or delete its subcategories first');
+  await tx.delete(terms).where(and(eq(terms.siteId, siteId), eq(terms.id, id)));
+  await audit(tx, siteId, actor, {
+    action: `${current.taxonomy}.delete`,
+    entityType: current.taxonomy,
+    entityId: id,
+    diff: { name: current.name, path: current.path },
+  });
+}
+
 async function getParent(tx: Tx, siteId: string, taxonomy: Term['taxonomy'], parentId: string) {
   const fail = (message: string) => new ValidationFailed([{ path: ['parentId'], message }]);
   if (taxonomy !== 'category') throw fail('Only categories can have a parent');
