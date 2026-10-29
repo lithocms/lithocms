@@ -9,10 +9,11 @@ import {
 } from '@lithocms/core';
 import { createMcpServer, RateLimiter } from '@lithocms/mcp';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
-import { desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { roleOn } from './api.js';
 import { ipHash } from './client-ip.js';
+import { publicSite, type ThemeService } from './theme-service.js';
 import type { ThemeSet } from './themes.js';
 
 const VERSION = '0.0.0';
@@ -29,8 +30,16 @@ export function registerMcp(
     secret,
     store,
     themes,
+    themeService,
     adminUrl,
-  }: { db: Db; secret: string; store: MediaStore; themes: ThemeSet; adminUrl: URL },
+  }: {
+    db: Db;
+    secret: string;
+    store: MediaStore;
+    themes: ThemeSet;
+    themeService: ThemeService;
+    adminUrl: URL;
+  },
 ) {
   const limiter = new RateLimiter();
   const unauthorized = (reply: FastifyReply, message: string) =>
@@ -56,16 +65,9 @@ export function registerMcp(
     const allowed = scopesFor(role);
     const scopes = token.scopes.filter((s) => allowed.includes(s));
 
-    const siteOrigin = await withSite(db, token.siteId, async (tx) => {
-      const [row] = await tx
-        .select({ domain: schema.siteDomains.domain })
-        .from(schema.siteDomains)
-        .where(eq(schema.siteDomains.siteId, token.siteId))
-        .orderBy(desc(schema.siteDomains.isPrimary), schema.siteDomains.domain)
-        .limit(1);
-      const port = adminUrl.port ? `:${adminUrl.port}` : '';
-      return row ? `${adminUrl.protocol}//${row.domain}${port}` : null;
-    });
+    const { origin: siteOrigin } = await withSite(db, token.siteId, (tx) =>
+      publicSite(tx, token.siteId, adminUrl),
+    );
 
     const server = createMcpServer(
       {
@@ -84,6 +86,7 @@ export function registerMcp(
         store,
         limiter,
         themeDefaults: themes.defaults,
+        themes: themeService,
         guides: { themeAuthoring: themes.authoringGuide },
         fetchUrl: (url, maxBytes) => safeFetch(url, { maxBytes, timeoutMs: 20_000 }),
       },

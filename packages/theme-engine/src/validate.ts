@@ -23,6 +23,9 @@ export interface ValidateOptions {
 /** Theme files: text for liquid/json/css/js/svg, bytes for everything else. */
 export type ThemeBundle = Record<string, string | Uint8Array>;
 
+/** Paths whose content is text in a bundle; everything else is bytes. */
+export const TEXT_FILE = /\.(liquid|json|css|js|svg|md|txt)$|^LICENSE$/;
+
 const REQUIRED = [
   'theme.json',
   'layouts/base.liquid',
