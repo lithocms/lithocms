@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import {
   loadPublicSite,
   NotFound,
@@ -37,12 +38,12 @@ const ASSET_TYPES: Record<string, string> = {
 };
 
 // Themes may load from hosts in the site's allowlist; inline scripts never run.
-function contentSecurityPolicy(allow: string[]): string {
+function contentSecurityPolicy(allow: string[], nonce: string): string {
   const hosts = allow.map((h) => `https://${h}`).join(' ');
   const src = (base: string) => `${base}${hosts ? ` ${hosts}` : ''}`;
   return [
     "default-src 'self'",
-    src("script-src 'self'"),
+    src(`script-src 'self' 'nonce-${nonce}'`),
     src("style-src 'self' 'unsafe-inline'"),
     src("img-src 'self' data:"),
     src("font-src 'self'"),
@@ -106,16 +107,19 @@ export function registerPublic(
     }
     // Only plain URLs are cached: queries carry search terms and form results.
     const cacheable = cache && !query && !request.url.includes('?');
-    const send = (status: number, html: string, cached: 'hit' | 'miss' | 'off') =>
-      reply
+    const send = (status: number, html: string, cached: 'hit' | 'miss' | 'off') => {
+      // Rendered (and cached) with a placeholder; every response gets its own nonce.
+      const nonce = randomBytes(16).toString('base64');
+      return reply
         .code(status)
         .type('text/html; charset=utf-8')
         .header('cache-control', 'public, max-age=0, must-revalidate')
-        .header('content-security-policy', contentSecurityPolicy(site.cspAllowlist))
+        .header('content-security-policy', contentSecurityPolicy(site.cspAllowlist, nonce))
         .header('x-content-type-options', 'nosniff')
         .header('referrer-policy', 'strict-origin-when-cross-origin')
         .header('x-litho-cache', cached)
-        .send(html);
+        .send(html.replaceAll(NONCE_PLACEHOLDER, nonce));
+    };
     const hit = cacheable ? await cache.get(site.id, path) : undefined;
     if (hit !== undefined) return send(200, hit, 'hit');
     const theme = await themeFor(site.id);
@@ -134,6 +138,7 @@ export function registerPublic(
         search: search ?? undefined,
         origin: originOf(site),
         secret,
+        scriptNonce: NONCE_PLACEHOLDER,
         formStatus:
           formKey && (formStatus === 'sent' || formStatus === 'error')
             ? { key: formKey, status: formStatus }
@@ -247,6 +252,9 @@ export function registerPublic(
   });
 }
 
+// Random per process (the page cache is dropped at startup), so neither themes nor content can
+// write it to obtain a nonce.
+const NONCE_PLACEHOLDER = `litho-nonce-${randomBytes(12).toString('hex')}`;
 const SITEMAP_KINDS = ['posts', 'pages', 'categories', 'tags'] as const;
 const FORM_PARAM = 'litho_form';
 const FORM_STATUS_PARAM = 'litho_status';

@@ -11,6 +11,7 @@ import {
   runMigrations,
   schema,
   updatePost,
+  updateSlot,
   upsertForm,
   withSite,
   type Actor,
@@ -106,6 +107,10 @@ beforeAll(async () => {
     ]) {
       await createRedirect(tx, siteA, admin, RedirectInput.parse(r));
     }
+    await updateSlot(tx, siteA, admin, 'footer', {
+      html: '<script>window.ok = 1</script><SCRIPT src="https://cdn.example.org/a.js"></SCRIPT>',
+      enabled: true,
+    });
     await upsertForm(
       tx,
       siteA,
@@ -157,7 +162,7 @@ describe('public pages', () => {
     expect(res.body).toContain('<h1>Site &lt;A&gt;</h1>');
     expect(res.body).toContain('<link rel="canonical" href="https://a.example/">');
     const csp = res.headers['content-security-policy'] as string;
-    expect(csp).toContain("script-src 'self' https://cdn.example.org;");
+    expect(csp).toMatch(/script-src 'self' 'nonce-[\w+/=]+' https:\/\/cdn\.example\.org;/);
     expect(csp).not.toContain('evil.com');
     expect(csp).toContain("object-src 'none'");
     expect(res.headers['x-content-type-options']).toBe('nosniff');
@@ -333,10 +338,9 @@ describe('page cache', () => {
     expect(first.headers['x-litho-cache']).toBe('miss');
     const second = await page('/cay-kahve/');
     expect(second.headers['x-litho-cache']).toBe('hit');
-    expect(second.body).toBe(first.body);
-    expect(second.headers['content-security-policy']).toBe(
-      first.headers['content-security-policy'],
-    );
+    // Equal but for the per-response nonce.
+    const plain = (body: string) => body.replace(/nonce="[^"]+"/g, '');
+    expect(plain(second.body)).toBe(plain(first.body));
     await withSite(db, siteA, (tx) => updatePost(tx, siteA, admin, postId, { excerpt: 'Yeni' }));
     expect((await page('/cay-kahve/')).headers['x-litho-cache']).toBe('miss');
     expect((await page('/cay-kahve/')).headers['x-litho-cache']).toBe('hit');
@@ -368,5 +372,22 @@ describe('page cache', () => {
     const after = await files();
     expect(after.length).toBeLessThan(before.length);
     expect(after.every((f) => before.includes(f))).toBe(true);
+  });
+});
+
+describe('slot scripts', () => {
+  it('run under a fresh CSP nonce on every response, cached or not', async () => {
+    const nonces = [];
+    for (const target of [app, cached, cached]) {
+      const res = await get('a.example', '/iletisim/', target);
+      const nonce = /'nonce-([^']+)'/.exec(res.headers['content-security-policy'] as string)?.[1];
+      expect(nonce).toMatch(/^[\w+/]+=*$/);
+      expect(res.body).toContain(
+        `<script nonce="${nonce}">window.ok = 1</script><script nonce="${nonce}" src="https://cdn.example.org/a.js"></SCRIPT>`,
+      );
+      expect(res.body).not.toContain('litho-nonce-');
+      nonces.push(nonce);
+    }
+    expect(new Set(nonces).size).toBe(3);
   });
 });
