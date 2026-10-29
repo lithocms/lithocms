@@ -6,7 +6,8 @@ import { createDb, runMigrations, withSite, type Db } from './client.js';
 import { auditLog, posts, postTerms, revisions, sites, terms, users } from './schema.js';
 
 // Tables with site_id that are deliberately instance-level (no RLS).
-const INSTANCE_TABLES = ['site_domains', 'memberships'];
+// Looked up before a site is known (host → site, session → role, token hash → site).
+const INSTANCE_TABLES = ['site_domains', 'memberships', 'mcp_tokens'];
 
 const fails = (cause: RegExp) => ({ cause: { message: expect.stringMatching(cause) as unknown } });
 

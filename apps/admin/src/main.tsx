@@ -23,6 +23,7 @@ const Forms = lazy(() => import('@/pages/forms').then((m) => ({ default: m.Forms
 const Collections = lazy(() =>
   import('@/pages/collections').then((m) => ({ default: m.Collections })),
 );
+const ClaudePage = lazy(() => import('@/pages/claude').then((m) => ({ default: m.ClaudePage })));
 
 function KnownSite({ children }: { children: React.ReactNode }) {
   const { me } = useSession();
@@ -62,6 +63,7 @@ function App() {
             <Route path="forms/:key?" element={<Forms />} />
             <Route path="theme" element={<ThemePage />} />
             <Route path="settings" element={<SiteSettingsPage />} />
+            <Route path="claude" element={<ClaudePage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -1,5 +1,10 @@
 import {
   activateTheme,
+  createMcpToken,
+  listMcpTokens,
+  McpTokenInput,
+  revokeMcpToken,
+  scopesFor,
   assertFormManager,
   can,
   deleteTheme,
@@ -624,6 +629,24 @@ export function registerApi(
         run(req, (tx, siteId, actor) => updateSlot(tx, siteId, actor, req.params.key, req.body)),
       );
 
+      // Claude connections: the signed-in user's own MCP access tokens for this site
+      const mcpInfo = () => ({ url: new URL('/mcp', adminUrl).href });
+      api.get('/mcp-tokens', async (req) => ({
+        ...mcpInfo(),
+        grantable: scopesFor(req.actor!.role),
+        tokens: await run(req, (tx, siteId, actor) => listMcpTokens(tx, siteId, actor)),
+      }));
+      api.post('/mcp-tokens', { schema: { body: McpTokenInput } }, async (req, reply) =>
+        reply.code(201).send({
+          ...mcpInfo(),
+          ...(await run(req, (tx, siteId, actor) => createMcpToken(tx, siteId, actor, req.body))),
+        }),
+      );
+      api.delete('/mcp-tokens/:id', { schema: { params: Id } }, async (req, reply) => {
+        await run(req, (tx, siteId, actor) => revokeMcpToken(tx, siteId, actor, req.params.id));
+        return reply.code(204).send();
+      });
+
       done();
     },
     { prefix: '/api/sites/:siteId' },
@@ -631,7 +654,7 @@ export function registerApi(
 }
 
 /** The user's role on a site; instance owners act as owners everywhere. */
-async function roleOn(db: Db, userId: string, siteId: string, isInstanceOwner: boolean) {
+export async function roleOn(db: Db, userId: string, siteId: string, isInstanceOwner: boolean) {
   const [membership] = await db
     .select({ role: schema.memberships.role })
     .from(schema.memberships)

@@ -1,4 +1,5 @@
 import {
+  Bot,
   ExternalLink,
   FileText,
   Files,
@@ -64,6 +65,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
       {site.atLeast('editor') && item('/menus', <SquareMenu />, t('nav.menus'))}
       {site.atLeast('admin') && item('/theme', <Palette />, t('nav.theme'))}
       {site.atLeast('admin') && item('/settings', <Settings />, t('nav.settings'))}
+      {item('/claude', <Bot />, t('nav.claude'))}
     </nav>
   );
 }

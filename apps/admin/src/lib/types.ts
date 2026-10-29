@@ -198,3 +198,22 @@ export interface SiteSettings {
   postsPerPage: number | null;
   searchEngines: boolean;
 }
+
+export type McpScope = 'content' | 'design' | 'admin';
+
+export interface McpToken {
+  id: string;
+  name: string;
+  scopes: McpScope[];
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface ClaudeConnections {
+  /** The MCP endpoint to connect to. */
+  url: string;
+  /** Scopes the signed-in user's role can grant on this site. */
+  grantable: McpScope[];
+  tokens: McpToken[];
+}

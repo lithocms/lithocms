@@ -24,6 +24,7 @@ export const TEST_THEME: Record<string, string> = {
 
 export const NO_THEMES: ThemeSet = {
   defaults: [],
+  authoringGuide: '',
   get: () => Promise.resolve(undefined),
   files: () => Promise.resolve(undefined),
   save: () => Promise.reject(new Error('no theme store')),

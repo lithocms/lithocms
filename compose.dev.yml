@@ -15,6 +15,7 @@ x-node-modules: &node-modules
   - nm-core:/src/packages/core/node_modules
   - nm-content-format:/src/packages/content-format/node_modules
   - nm-theme-engine:/src/packages/theme-engine/node_modules
+  - nm-mcp:/src/packages/mcp/node_modules
   - nm-server:/src/apps/server/node_modules
   - nm-admin:/src/apps/admin/node_modules
 
@@ -132,5 +133,6 @@ volumes:
   nm-core:
   nm-content-format:
   nm-theme-engine:
+  nm-mcp:
   nm-server:
   nm-admin:

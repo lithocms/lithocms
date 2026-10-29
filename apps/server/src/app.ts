@@ -5,6 +5,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { registerApi } from './api.js';
 import { registerAuthRoutes, type Auth } from './auth.js';
+import { registerMcp } from './mcp.js';
 import { registerMediaFiles } from './media-files.js';
 import { registerPublic } from './public.js';
 import { normalizeHost, type ResolvedSite, type SiteResolver } from './sites.js';
@@ -75,7 +76,8 @@ export function buildApp({
       if (write && request.headers.origin !== adminUrl.origin) {
         return reply.code(403).send({ error: 'forbidden_origin' });
       }
-      if (admin && SAFE_METHODS.has(request.method) && !request.url.startsWith('/api/')) {
+      const spa = !request.url.startsWith('/api/') && !request.url.startsWith('/mcp');
+      if (admin && SAFE_METHODS.has(request.method) && spa) {
         return admin.serve(request, reply);
       }
       return;
@@ -110,6 +112,7 @@ export function buildApp({
 
   registerAuthRoutes(app, { auth, db, adminUrl });
   registerApi(app, { db, auth, secret, store, themes, adminUrl });
+  registerMcp(app, { db, secret, store, themes, adminUrl });
   registerMediaFiles(app, store);
   registerPublic(app, { db, themes, adminUrl, secret, jobs, cache });
 
