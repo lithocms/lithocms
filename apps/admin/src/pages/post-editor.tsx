@@ -2,6 +2,7 @@ import { ArrowDown, ArrowLeft, ArrowUp, ExternalLink, Plus, Trash2 } from 'lucid
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ImageField } from '@/components/media-picker';
+import { Revisions } from '@/components/revisions';
 import { RichText } from '@/components/rich-text';
 import { compactSection, SectionFields, type SectionData } from '@/components/settings-form';
 import { ErrorNote, Loading } from '@/components/shell';
@@ -10,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { api, ApiError, useApi, type Issue } from '@/lib/api';
 import { mediaIds, type PMNode } from '@/lib/doc';
-import { useI18n, useLabel } from '@/lib/i18n';
+import { useFormat, useI18n, useLabel } from '@/lib/i18n';
 import { useSite } from '@/lib/session';
 import type { Media, Post, Section, Term, Theme } from '@/lib/types';
 
@@ -39,8 +40,14 @@ const EMPTY: Draft = {
   seo: {},
 };
 
+/** `datetime-local` value (the browser's time zone) for an ISO date. */
+const toLocalInput = (iso: string) => {
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+};
+
 /** Loads the post (or a blank one) and the URLs of the images in its body. */
-function usePost(postId: string) {
+function usePost(postId: string, version: number) {
   const site = useSite();
   const [state, setState] = useState<{
     post?: Post;
@@ -65,19 +72,27 @@ function usePost(postId: string) {
     return () => {
       live = false;
     };
-  }, [postId, site.id]);
+  }, [postId, site.id, version]);
   return state;
 }
 
 export function PostEditor() {
   const { postId = 'new' } = useParams();
   const [params] = useSearchParams();
-  const loaded = usePost(postId);
+  // Bumped after a revision is restored: reload the post and start the form afresh.
+  const [version, setVersion] = useState(0);
+  const loaded = usePost(postId, version);
   if (loaded.error) return <ErrorNote error={loaded.error} />;
   if (!loaded.srcs) return <Loading />;
   const type = loaded.post?.type ?? (params.get('type') === 'page' ? 'page' : 'post');
   return (
-    <EditorForm key={loaded.post?.id ?? 'new'} post={loaded.post} type={type} srcs={loaded.srcs} />
+    <EditorForm
+      key={`${loaded.post?.id ?? 'new'}:${loaded.post?.updatedAt ?? ''}`}
+      post={loaded.post}
+      type={type}
+      srcs={loaded.srcs}
+      onRestored={() => setVersion((v) => v + 1)}
+    />
   );
 }
 
@@ -94,12 +109,15 @@ function EditorForm({
   post,
   type,
   srcs,
+  onRestored,
 }: {
   post?: Post;
   type: 'post' | 'page';
   srcs: Record<string, string>;
+  onRestored: () => void;
 }) {
   const { t } = useI18n();
+  const fmt = useFormat();
   const l = useLabel();
   const site = useSite();
   const navigate = useNavigate();
@@ -108,6 +126,12 @@ function EditorForm({
   const tags = useApi<Term[]>(type === 'post' ? site.path('/terms?taxonomy=tag') : null);
   const [draft, setDraft] = useState<Draft>(() => (post ? { ...EMPTY, ...post } : EMPTY));
   const [status, setStatus] = useState(post?.status ?? 'draft');
+  const [publishedAt, setPublishedAt] = useState(post?.publishedAt ?? null);
+  // Empty publishes now; a future time schedules.
+  const [publishAt, setPublishAt] = useState(() =>
+    post?.status === 'scheduled' && post.publishedAt ? toLocalInput(post.publishedAt) : '',
+  );
+  const future = publishAt !== '' && new Date(publishAt) > new Date();
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -164,11 +188,13 @@ function EditorForm({
       if (action)
         saved = await api<Post>(site.path(`/posts/${saved.id}/${action}`), {
           method: 'POST',
-          body: {},
+          body: action === 'publish' && future ? { at: new Date(publishAt).toISOString() } : {},
         });
       setDirty(false);
       if (action === 'trash') return void navigate(site.to(type === 'post' ? '/posts' : '/pages'));
       setStatus(saved.status);
+      setPublishedAt(saved.publishedAt);
+      if (saved.status !== 'scheduled') setPublishAt('');
       setDraft((d) => ({ ...d, slug: saved.slug }));
       setNotice(t('common.saved'));
       if (!post) void navigate(site.to(`/posts/${saved.id}`), { replace: true });
@@ -260,10 +286,10 @@ function EditorForm({
         ) : (
           <>
             <Button disabled={busy} onClick={() => void save()}>
-              {t('editor.saveDraft')}
+              {status === 'scheduled' ? t('common.save') : t('editor.saveDraft')}
             </Button>
             <Button variant="primary" disabled={busy} onClick={() => void save('publish')}>
-              {t('editor.publish')}
+              {future ? t('editor.schedule') : t('editor.publish')}
             </Button>
           </>
         )}
@@ -381,6 +407,42 @@ function EditorForm({
         </div>
 
         <aside className="border-t border-rule lg:border-t-0 lg:border-l">
+          {status !== 'published' && status !== 'trash' && (
+            <Side title={t('editor.publishing')}>
+              {status === 'scheduled' && publishedAt && (
+                <p className="text-sm">
+                  {t('editor.scheduledFor', { d: fmt.dateTime(publishedAt) })}
+                </p>
+              )}
+              <Field
+                label={t('editor.publishAt')}
+                hint={t('editor.publishAtHint')}
+                htmlFor="publish-at"
+              >
+                <Input
+                  id="publish-at"
+                  type="datetime-local"
+                  value={publishAt}
+                  onChange={(e) => {
+                    setPublishAt(e.target.value);
+                    setNotice('');
+                  }}
+                />
+              </Field>
+              {status === 'scheduled' && (
+                <div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void save('unpublish')}
+                  >
+                    {t('editor.cancelSchedule')}
+                  </Button>
+                </div>
+              )}
+            </Side>
+          )}
           <Side>
             <Field
               label={t('editor.slug')}
@@ -505,6 +567,13 @@ function EditorForm({
               />
             </Field>
           </Side>
+          {post && (
+            <Side title={t('revisions.title')}>
+              <div>
+                <Revisions postId={post.id} onRestored={onRestored} />
+              </div>
+            </Side>
+          )}
           {post && status !== 'trash' && (
             <div className="px-4 py-4">
               <Button
