@@ -1,0 +1,10 @@
+<article class="wrap article">
+  <header>
+    {%- if page.parent -%}<a class="kicker" href="{{ page.parent.url }}">{{ page.parent.title }}</a>{%- endif -%}
+    <h1>{{ page.title }}</h1>
+  </header>
+  <div class="prose">{{ page.content }}</div>
+  {%- if page.children.size > 0 -%}
+    <ul class="post-list">{%- for c in page.children -%}<li><a href="{{ c.url }}">{{ c.title }}</a></li>{%- endfor -%}</ul>
+  {%- endif -%}
+</article>

@@ -1,0 +1,37 @@
+<section class="hero">
+  <div class="wrap">
+    <h1>{{ section.settings.heading | default: site.name }}</h1>
+    {%- if section.settings.text != blank -%}<p class="lead">{{ section.settings.text }}</p>{%- endif -%}
+    {%- if section.blocks.size > 0 -%}
+      <p class="actions">
+        {%- for block in section.blocks -%}
+          <a class="button{% if forloop.first %} button-primary{% endif %}" href="{{ block.settings.url }}">{{ block.settings.label }}</a>
+        {%- endfor -%}
+      </p>
+    {%- endif -%}
+  </div>
+  {%- if section.settings.image -%}
+    {{ section.settings.image | image_tag: widths: "800,1200,1920", sizes: "100vw", loading: "eager", class: "hero-image" }}
+  {%- endif -%}
+</section>
+{% schema %}
+{
+  "name": { "tr": "Giriş", "en": "Hero" },
+  "settings": [
+    { "id": "heading", "type": "text", "label": { "tr": "Başlık", "en": "Heading" } },
+    { "id": "text", "type": "textarea", "label": { "tr": "Metin", "en": "Text" } },
+    { "id": "image", "type": "image", "label": { "tr": "Görsel", "en": "Image" } }
+  ],
+  "blocks": [
+    {
+      "type": "button",
+      "name": { "tr": "Buton", "en": "Button" },
+      "settings": [
+        { "id": "label", "type": "text", "label": { "tr": "Yazı", "en": "Label" } },
+        { "id": "url", "type": "url", "label": { "tr": "Bağlantı", "en": "Link" } }
+      ]
+    }
+  ],
+  "max_blocks": 2
+}
+{% endschema %}

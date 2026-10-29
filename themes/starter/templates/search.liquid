@@ -1,0 +1,11 @@
+{%- paginate search.results by 10 -%}
+<section class="wrap">
+  <h1>{{ 'search' | t }}</h1>
+  {% render 'search-form', id: 'q', value: search.terms %}
+  {%- if search.terms != blank -%}
+    <p class="muted">{{ search.results_count }} {{ 'results' | t }}</p>
+    {% render 'post-list', list: search.results %}
+    {% render 'pagination', paginate: paginate %}
+  {%- endif -%}
+</section>
+{%- endpaginate -%}

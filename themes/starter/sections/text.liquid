@@ -1,0 +1,13 @@
+<section class="wrap prose-section">
+  {%- if section.settings.heading != blank -%}<h2>{{ section.settings.heading }}</h2>{%- endif -%}
+  <div class="prose">{{ section.settings.body }}</div>
+</section>
+{% schema %}
+{
+  "name": { "tr": "Metin", "en": "Text" },
+  "settings": [
+    { "id": "heading", "type": "text", "label": { "tr": "Başlık", "en": "Heading" } },
+    { "id": "body", "type": "richtext", "label": { "tr": "Metin", "en": "Text" } }
+  ]
+}
+{% endschema %}

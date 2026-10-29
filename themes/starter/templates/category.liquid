@@ -1,0 +1,9 @@
+{%- comment -%} Categories; tags use this template too (no tag.liquid). {%- endcomment -%}
+{%- paginate posts by 10 -%}
+<section class="wrap">
+  <h1>{{ term.name }}</h1>
+  {%- if term.description != blank -%}<p class="lead">{{ term.description }}</p>{%- endif -%}
+  {% render 'post-list', list: posts %}
+  {% render 'pagination', paginate: paginate %}
+</section>
+{%- endpaginate -%}

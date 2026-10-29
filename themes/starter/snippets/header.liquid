@@ -1,0 +1,18 @@
+<header class="site-header wrap">
+  <a class="brand" href="/" translate="no">
+    {%- if site.logo -%}
+      {{ site.logo | image_tag: widths: "160,320", sizes: "160px", loading: "eager", alt: site.name }}
+    {%- else -%}
+      {{ site.name }}
+    {%- endif -%}
+  </a>
+  {%- if menus.primary.items.size > 0 -%}
+    <nav aria-label="{{ 'menu' | t }}">
+      <ul class="nav">
+        {%- for item in menus.primary.items -%}
+          <li><a href="{{ item.url }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.label }}</a></li>
+        {%- endfor -%}
+      </ul>
+    </nav>
+  {%- endif -%}
+</header>
