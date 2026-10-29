@@ -15,4 +15,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[AGPL-3.0](LICENSE)
+[AGPL-3.0](LICENSE), except the starter theme in [`themes/starter`](themes/starter), which is
+[MIT](themes/starter/LICENSE) so themes built from it can use any licence.
