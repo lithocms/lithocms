@@ -88,7 +88,7 @@ export async function findCached(
       and(
         eq(pageCache.siteId, siteId),
         eq(pageCache.path, path),
-        gt(pageCache.createdAt, new Date(Date.now() - CACHE_MAX_AGE_MS)),
+        gt(pageCache.createdAt, expiry()),
       ),
     );
   if (!row) return undefined;
@@ -127,10 +127,12 @@ export async function storeCached(
     .for('share');
   if (site?.v !== version) return undefined;
   await tx.delete(pageCache).where(and(eq(pageCache.siteId, siteId), eq(pageCache.path, path)));
+  // Live entries only; expired ones are deleted by `cachedIds` (the sweep). Concurrent stores
+  // may overshoot the limit by a few entries.
   const [{ n } = { n: 0 }] = await tx
     .select({ n: count() })
     .from(pageCache)
-    .where(eq(pageCache.siteId, siteId));
+    .where(and(eq(pageCache.siteId, siteId), gt(pageCache.createdAt, expiry())));
   if (n >= CACHE_MAX_ENTRIES) return undefined;
   const [row] = await tx.insert(pageCache).values({ siteId, path }).returning({ id: pageCache.id });
   if (tags.length) {
@@ -141,16 +143,16 @@ export async function storeCached(
   return row!.id;
 }
 
-/** Ids of the site's current entries; files of other ids are stale. */
+/** Deletes the site's expired entries and returns the ids of the rest; other files are stale. */
 export async function cachedIds(tx: Tx, siteId: string): Promise<Set<string>> {
+  await tx
+    .delete(pageCache)
+    .where(and(eq(pageCache.siteId, siteId), lte(pageCache.createdAt, expiry())));
   const rows = await tx
     .select({ id: pageCache.id })
     .from(pageCache)
-    .where(
-      and(
-        eq(pageCache.siteId, siteId),
-        gt(pageCache.createdAt, new Date(Date.now() - CACHE_MAX_AGE_MS)),
-      ),
-    );
+    .where(eq(pageCache.siteId, siteId));
   return new Set(rows.map((r) => r.id));
 }
+
+const expiry = () => new Date(Date.now() - CACHE_MAX_AGE_MS);

@@ -7,6 +7,8 @@ import { pageCache, posts, sites, users } from '../db/schema.js';
 import { startTestDatabase, type TestDatabase } from '../testing/postgres.js';
 import {
   CACHE_MAX_ENTRIES,
+  CACHE_MAX_AGE_MS,
+  cachedIds,
   cacheVersion,
   findCached,
   purgeCache,
@@ -79,18 +81,22 @@ describe('page cache', () => {
 
   it('stops storing at the per-site entry limit', async () => {
     await inA((tx) =>
-      tx
-        .insert(pageCache)
-        .values(
-          Array.from({ length: CACHE_MAX_ENTRIES }, (_, i) => ({
-            siteId: siteA,
-            path: `/fill/${i}/`,
-          })),
-        ),
+      tx.insert(pageCache).values(
+        Array.from({ length: CACHE_MAX_ENTRIES }, (_, i) => ({
+          siteId: siteA,
+          path: `/fill/${i}/`,
+        })),
+      ),
     );
     expect(await store('/one-more/', [])).toBeUndefined();
     // Replacing an existing entry still works.
     expect(await store('/fill/1/', [])).toEqual(expect.any(String));
+    // Expired entries neither count nor stay once swept.
+    await inA((tx) =>
+      tx.update(pageCache).set({ createdAt: new Date(Date.now() - CACHE_MAX_AGE_MS - 1000) }),
+    );
+    expect(await store('/one-more/', [])).toEqual(expect.any(String));
+    expect((await inA((tx) => cachedIds(tx, siteA))).size).toBe(1);
     await inA((tx) => purgeCache(tx, siteA, 'all'));
   });
 
