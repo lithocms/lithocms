@@ -135,7 +135,11 @@ export function createThemeEngine(files: ThemeFiles): ThemeEngine {
       return String(
         await liquid.render(
           engine.parse('layouts/base.liquid'),
-          { ...request.scope, content_for_layout: safe(String(content)) },
+          // Copies getters as getters: core records what a page reads (page cache tags).
+          Object.defineProperties(
+            { content_for_layout: safe(String(content)) },
+            Object.getOwnPropertyDescriptors(request.scope),
+          ),
           { globals },
         ),
       );

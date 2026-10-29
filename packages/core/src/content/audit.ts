@@ -1,5 +1,6 @@
 import type { Tx } from '../db/client.js';
 import { auditLog, type Channel, type Role } from '../db/schema.js';
+import { purgeCache, purgeTagsFor } from '../public/cache.js';
 
 /** Who is acting, through which channel. Built by the REST/MCP boundary from the session or token. */
 export interface Actor {
@@ -10,6 +11,7 @@ export interface Actor {
   ipHash?: string;
 }
 
+/** Records a write and purges the cached pages it affects (every write is audited). */
 export async function audit(
   tx: Tx,
   siteId: string,
@@ -24,4 +26,5 @@ export async function audit(
     ipHash: actor.ipHash,
     ...entry,
   });
+  await purgeCache(tx, siteId, purgeTagsFor(entry));
 }

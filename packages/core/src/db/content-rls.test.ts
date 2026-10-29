@@ -95,6 +95,8 @@ describe('row-level security', () => {
       'forms',
       'media',
       'menus',
+      'page_cache',
+      'page_cache_tags',
       'post_terms',
       'posts',
       'redirects',

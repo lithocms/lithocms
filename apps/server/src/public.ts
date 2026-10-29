@@ -16,6 +16,7 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ipHash } from './client-ip.js';
 import type { Jobs } from './jobs.js';
+import type { PageCache } from './page-cache.js';
 import { normalizeHost, type ResolvedSite } from './sites.js';
 import type { LoadedTheme, ThemeSet } from './themes.js';
 
@@ -63,12 +64,14 @@ export function registerPublic(
     adminUrl,
     secret,
     jobs,
+    cache,
   }: {
     db: Db;
     themes: ThemeSet;
     adminUrl: URL;
     secret: string;
     jobs?: Pick<Jobs, 'notifyForm'>;
+    cache?: PageCache;
   },
 ) {
   const originOf = (site: ResolvedSite) =>
@@ -101,6 +104,20 @@ export function registerPublic(
     if (normalizeHost(request.hostname) !== site.primaryDomain) {
       return reply.redirect(`${originOf(site)}${request.url}`, 301);
     }
+    // Only plain URLs are cached: queries carry search terms and form results.
+    const cacheable = cache && !query && !request.url.includes('?');
+    const send = (status: number, html: string, cached: 'hit' | 'miss' | 'off') =>
+      reply
+        .code(status)
+        .type('text/html; charset=utf-8')
+        .header('cache-control', 'public, max-age=0, must-revalidate')
+        .header('content-security-policy', contentSecurityPolicy(site.cspAllowlist))
+        .header('x-content-type-options', 'nosniff')
+        .header('referrer-policy', 'strict-origin-when-cross-origin')
+        .header('x-litho-cache', cached)
+        .send(html);
+    const hit = cacheable ? await cache.get(site.id, path) : undefined;
+    if (hit !== undefined) return send(200, hit, 'hit');
     const theme = await themeFor(site.id);
     if (!theme) {
       request.log.error('no renderable theme for site');
@@ -130,14 +147,12 @@ export function registerPublic(
         : res.location;
       return reply.redirect(location, res.status);
     }
-    return reply
-      .code(res.status)
-      .type('text/html; charset=utf-8')
-      .header('cache-control', 'public, max-age=0, must-revalidate')
-      .header('content-security-policy', contentSecurityPolicy(site.cspAllowlist))
-      .header('x-content-type-options', 'nosniff')
-      .header('referrer-policy', 'strict-origin-when-cross-origin')
-      .send(res.html);
+    if (cacheable && res.status === 200) {
+      await cache.put(site.id, path, res.html, res.cache).catch((err: unknown) => {
+        request.log.warn({ err }, 'page cache store failed');
+      });
+    }
+    return send(res.status, res.html, cacheable ? 'miss' : 'off');
   };
 
   app.get('/', page);

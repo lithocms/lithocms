@@ -51,6 +51,8 @@ export const sites = pgTable('sites', {
   status: text({ enum: ['active', 'maintenance', 'disabled'] })
     .notNull()
     .default('active'),
+  /** Bumped by every page cache purge; a render that overlapped one is not stored. */
+  cacheVersion: integer().notNull().default(0),
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 });
@@ -605,6 +607,39 @@ export const formSubmissions = pgTable(
     index().on(t.formId, t.createdAt.desc()),
     index().on(t.formId, t.ipHash, t.createdAt),
     tenantPolicy('form_submissions'),
+  ],
+).enableRLS();
+
+// --- page cache -------------------------------------------------------------------------
+
+/** A cached public page; the HTML is a file named after `id` (see the server's page cache). */
+export const pageCache = pgTable(
+  'page_cache',
+  {
+    id: id(),
+    siteId: siteRef(),
+    path: text().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [unique().on(t.siteId, t.path), unique().on(t.siteId, t.id), tenantPolicy('page_cache')],
+).enableRLS();
+
+/** What a cached page shows (`post:<id>`, `lists`, `menus`, ...); writes purge by tag. */
+export const pageCacheTags = pgTable(
+  'page_cache_tags',
+  {
+    siteId: siteRef(),
+    cacheId: uuid().notNull(),
+    tag: text().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.cacheId, t.tag] }),
+    foreignKey({
+      columns: [t.siteId, t.cacheId],
+      foreignColumns: [pageCache.siteId, pageCache.id],
+    }).onDelete('cascade'),
+    index().on(t.siteId, t.tag),
+    tenantPolicy('page_cache_tags'),
   ],
 ).enableRLS();
 

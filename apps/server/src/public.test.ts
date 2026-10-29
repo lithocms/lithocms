@@ -10,6 +10,7 @@ import {
   RedirectInput,
   runMigrations,
   schema,
+  updatePost,
   upsertForm,
   withSite,
   type Actor,
@@ -18,10 +19,13 @@ import {
 import { startTestDatabase, type TestDatabase } from '@lithocms/core/testing';
 import type { FastifyInstance } from 'fastify';
 import { createHash } from 'node:crypto';
+import { mkdtemp, readdir, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
+import { createPageCache } from './page-cache.js';
 import { createAuth } from './auth.js';
 import { createSiteResolver } from './sites.js';
 import { NO_THEMES, TEST_THEME, testThemes } from './testing/themes.js';
@@ -35,7 +39,11 @@ let db: Db;
 const pools: Pool[] = [];
 let app: FastifyInstance;
 let bare: FastifyInstance;
+let cached: FastifyInstance;
+let cacheDir: string;
 let siteA: string;
+let admin: Actor;
+let postId: string;
 
 const get = (host: string, url = '/', target = app) =>
   target.inject({ method: 'GET', url, headers: { host } });
@@ -66,7 +74,7 @@ beforeAll(async () => {
     .insert(schema.users)
     .values({ name: 'Admin', email: 'admin@example.com' })
     .returning();
-  const admin: Actor = { userId: user!.id, role: 'admin', channel: 'admin' };
+  admin = { userId: user!.id, role: 'admin', channel: 'admin' };
   await withSite(db, siteA, async (tx) => {
     const page = await createPost(
       tx,
@@ -82,6 +90,7 @@ beforeAll(async () => {
       PostCreateInput.parse({ type: 'post', title: 'Çay & <kahve>', excerpt: 'Kısa' }),
     );
     await publishPost(tx, siteA, admin, post.id);
+    postId = post.id;
     const hidden = await createPost(
       tx,
       siteA,
@@ -126,10 +135,17 @@ beforeAll(async () => {
   };
   app = buildApp({ ...options, themes: await testThemes(owner.db) });
   bare = buildApp({ ...options, themes: NO_THEMES });
+  cacheDir = await mkdtemp(join(tmpdir(), 'litho-cache-'));
+  cached = buildApp({
+    ...options,
+    themes: await testThemes(owner.db),
+    cache: createPageCache(cacheDir, db),
+  });
 });
 
 afterAll(async () => {
-  await Promise.all([app.close(), bare.close()]);
+  await Promise.all([app.close(), bare.close(), cached.close()]);
+  await rm(cacheDir, { recursive: true, force: true });
   await Promise.all(pools.map((p) => p.end()));
   await tdb.stop();
 });
@@ -306,5 +322,51 @@ describe('robots, sitemaps and feed', () => {
     expect((await get('a.example', '/')).body).toContain(
       '<link rel="alternate" type="application/rss+xml" title="Site &lt;A&gt;" href="https://a.example/feed/">',
     );
+  });
+});
+
+describe('page cache', () => {
+  const page = (url: string) => get('a.example', url, cached);
+
+  it('serves repeat views from disk until a write purges them', async () => {
+    const first = await page('/cay-kahve/');
+    expect(first.headers['x-litho-cache']).toBe('miss');
+    const second = await page('/cay-kahve/');
+    expect(second.headers['x-litho-cache']).toBe('hit');
+    expect(second.body).toBe(first.body);
+    expect(second.headers['content-security-policy']).toBe(
+      first.headers['content-security-policy'],
+    );
+    await withSite(db, siteA, (tx) => updatePost(tx, siteA, admin, postId, { excerpt: 'Yeni' }));
+    expect((await page('/cay-kahve/')).headers['x-litho-cache']).toBe('miss');
+    expect((await page('/cay-kahve/')).headers['x-litho-cache']).toBe('hit');
+  });
+
+  it('never caches queries, redirects or errors', async () => {
+    expect((await page('/?s=cay')).headers['x-litho-cache']).toBe('off');
+    expect(
+      (await page('/iletisim/?litho_form=contact&litho_status=sent')).headers['x-litho-cache'],
+    ).toBe('off');
+    await page('/yok/');
+    expect((await page('/yok/')).statusCode).toBe(404);
+    expect((await page('/yok/')).headers['x-litho-cache']).toBe('miss');
+    expect((await page('/eski-iletisim/')).statusCode).toBe(301);
+  });
+
+  it('sweeps files of purged entries', async () => {
+    await page('/');
+    await page('/');
+    const files = () => readdir(join(cacheDir, siteA));
+    const before = await files();
+    // Any post write purges listings like the home page.
+    await withSite(db, siteA, (tx) =>
+      updatePost(tx, siteA, admin, postId, { excerpt: 'Daha yeni' }),
+    );
+    const old = new Date(Date.now() - 120_000);
+    await Promise.all(before.map((f) => utimes(join(cacheDir, siteA, f), old, old)));
+    await createPageCache(cacheDir, db).sweep();
+    const after = await files();
+    expect(after.length).toBeLessThan(before.length);
+    expect(after.every((f) => before.includes(f))).toBe(true);
   });
 });

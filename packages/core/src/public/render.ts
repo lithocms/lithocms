@@ -18,6 +18,7 @@ import { formToken, listForms, renderForm } from '../content/forms.js';
 import { flatten, listMenus } from '../content/menus.js';
 import { termFields } from '../content/terms.js';
 import { hitRedirect } from '../content/redirects.js';
+import { cacheVersion } from './cache.js';
 import { renderContent } from '../content/posts.js';
 import { enabledSlots } from '../content/slots.js';
 import type { Tx } from '../db/client.js';
@@ -63,7 +64,12 @@ export interface PublicRequest {
 }
 
 export type PublicResponse =
-  | { status: 200 | 404 | 410; html: string }
+  | {
+      status: 200 | 404 | 410;
+      html: string;
+      /** For the page cache: what the page shows, and the cache version it was rendered at. */
+      cache: { tags: string[]; version: number };
+    }
   /** `location` is a `/path` on this site or, for admin-made redirects, an absolute URL. */
   | { status: 301 | 302; location: string };
 
@@ -100,6 +106,8 @@ export async function renderPublic(
   theme: PublicTheme,
   req: PublicRequest,
 ): Promise<PublicResponse> {
+  // Read before any content, so a write committed during this render shows as a new version.
+  const version = await cacheVersion(tx, siteId);
   const site = await loadPublicSite(tx, siteId);
   // Redirects come first: an admin may point a live URL elsewhere.
   const redirect = await hitRedirect(tx, siteId, req.path);
@@ -112,7 +120,8 @@ export async function renderPublic(
   if (resolved.type === 'redirect') return { status: 301, location: resolved.location };
 
   const categories = await categoryTree(tx, site);
-  const ctx: Ctx = { tx, site, theme, req, categories };
+  const tags = new Set<string>();
+  const ctx: Ctx = { tx, site, theme, req, categories, tags };
   const page = (await buildPage(ctx, resolved)) ?? notFound(site);
   // The site asks search engines to stay away (robots.txt says so too).
   if (site.settings.search_engines === false) page.seo.noindex = true;
@@ -120,6 +129,11 @@ export async function renderPublic(
 
   const [logo] = await images(tx, site.id, [setting(site, 'logo')]);
   const canonical = page.seo.canonical ?? req.origin + req.path;
+  const lazy = {
+    categories: [categories.tags, { top: categories.top, all: categories.all }],
+    menus: await menuScope(ctx),
+    collections: await collectionScope(ctx),
+  } satisfies Record<string, [string[], unknown]>;
   const scope: Scope = {
     site: {
       name: site.name,
@@ -138,9 +152,7 @@ export async function renderPublic(
       css_variables: safe(cssVariables(theme.manifest)),
     },
     request: { path: req.path, page_type: page.pageType, query: req.search ?? '' },
-    categories: { top: categories.top, all: categories.all },
-    menus: await menuScope(tx, site, req.path),
-    collections: await collectionScope(tx, site),
+
     seo: {
       title: page.seo.title,
       description: page.seo.description,
@@ -149,6 +161,7 @@ export async function renderPublic(
     },
     ...page.scope,
   };
+  track(scope, tags, lazy);
   const seoImage = page.seo.image ?? logo;
   const slotHtml = await enabledSlots(tx, site.id);
   const siteForms = await listForms(tx, site.id);
@@ -167,6 +180,7 @@ export async function renderPublic(
       // TODO(phase-3): core-rendered comment form.
       commentForm: () => '',
       form: (key) => {
+        tags.add('forms');
         const form = siteForms.find((f) => f.key === key);
         if (!form) return '';
         const status = req.formStatus?.key === key ? req.formStatus.status : undefined;
@@ -176,11 +190,30 @@ export async function renderPublic(
           status,
         });
       },
-      slot: (key) => slotHtml.get(key) ?? '',
+      slot: (key) => {
+        tags.add('slots');
+        return slotHtml.get(key) ?? '';
+      },
       section: () => undefined,
     } satisfies RenderHooks,
   });
-  return { status, html };
+  return { status, html, cache: { tags: [...tags], version } };
+}
+
+/**
+ * Adds scope entries that tag the page only when a template reads them, so a theme that never
+ * shows categories is not purged by every post write. (Spreading `scope` would read them all.)
+ */
+function track(scope: Scope, tags: Set<string>, entries: Record<string, [string[], unknown]>) {
+  for (const [key, [entryTags, value]] of Object.entries(entries)) {
+    Object.defineProperty(scope, key, {
+      enumerable: true,
+      get() {
+        for (const t of entryTags) tags.add(t);
+        return value;
+      },
+    });
+  }
 }
 
 interface Ctx {
@@ -189,6 +222,8 @@ interface Ctx {
   theme: PublicTheme;
   req: PublicRequest;
   categories: CategoryTree;
+  /** Page cache tags of what this page shows. */
+  tags: Set<string>;
 }
 
 async function buildPage(ctx: Ctx, resolved: Resolved): Promise<Page | undefined> {
@@ -237,7 +272,7 @@ async function buildPage(ctx: Ctx, resolved: Resolved): Promise<Page | undefined
       const node =
         resolved.type === 'category'
           ? ctx.categories.byId.get(resolved.term.id)!
-          : (await termNodes(ctx.tx, site, [resolved.term])).get(resolved.term.id)!;
+          : (await termNodes(ctx.tx, site, [resolved.term], ctx.tags)).get(resolved.term.id)!;
       const list = await listing(ctx, resolved.type, resolved.page, inTerm(ctx.tx, resolved.term));
       if (!list) return undefined;
       return {
@@ -335,6 +370,7 @@ function notFound(site: PublicSite): Page {
 
 async function listing(ctx: Ctx, template: string, page: number, where?: SQL) {
   const { tx, site, theme } = ctx;
+  ctx.tags.add('lists');
   const size = theme.engine.pageSize(template) ?? pageSizeSetting(site);
   const filter = and(eq(posts.siteId, site.id), eq(posts.type, 'post'), isLive(), where);
   const [{ total } = { total: 0 }] = await tx.select({ total: count() }).from(posts).where(filter);
@@ -431,6 +467,7 @@ function paginate(ctx: Ctx, current: number, pages: number, query = '') {
 
 async function postObjects(ctx: Ctx, rows: PostRow[]): Promise<Scope[]> {
   if (!rows.length) return [];
+  for (const r of rows) ctx.tags.add(`post:${r.id}`);
   const { tx, site } = ctx;
   const ids = rows.map((r) => r.id);
   const [urls, authors, media, links] = await Promise.all([
@@ -456,6 +493,7 @@ async function postObjects(ctx: Ctx, rows: PostRow[]): Promise<Scope[]> {
     tx,
     site,
     links.filter((l) => l.term.taxonomy === 'tag').map((l) => l.term),
+    ctx.tags,
   );
   const nodeOf = (term: Term) =>
     term.taxonomy === 'category' ? ctx.categories.byId.get(term.id) : tags.get(term.id);
@@ -490,6 +528,7 @@ async function postObjects(ctx: Ctx, rows: PostRow[]): Promise<Scope[]> {
 
 async function pageExtras(ctx: Ctx, row: PostRow): Promise<Scope> {
   const { tx, site } = ctx;
+  ctx.tags.add('pages');
   const live = and(eq(posts.siteId, site.id), eq(posts.type, 'page'), isLive());
   const [parents, children] = await Promise.all([
     row.parentId
@@ -529,6 +568,8 @@ interface CategoryTree {
   top: TermNode[];
   all: TermNode[];
   byId: Map<string, TermNode>;
+  /** Page cache tags of pages that show the tree. */
+  tags: string[];
 }
 
 /**
@@ -536,12 +577,13 @@ interface CategoryTree {
  * are flat copies, so the graph has no cycles (themes may `json` a term).
  */
 async function categoryTree(tx: Tx, site: PublicSite): Promise<CategoryTree> {
+  const tags = new Set(['categories']);
   const rows = await tx
     .select()
     .from(terms)
     .where(and(eq(terms.siteId, site.id), eq(terms.taxonomy, 'category')))
     .orderBy(asc(terms.sort), asc(terms.name));
-  const nodes = await termNodes(tx, site, rows);
+  const nodes = await termNodes(tx, site, rows, tags);
   const flat = (n: TermNode) => ({
     name: n.name,
     slug: n.slug,
@@ -569,10 +611,15 @@ async function categoryTree(tx: Tx, site: PublicSite): Promise<CategoryTree> {
       .map(flat);
   }
   const all = [...rows].sort((a, b) => a.path.localeCompare(b.path)).map((r) => nodes.get(r.id)!);
-  return { top, all, byId: nodes };
+  return { top, all, byId: nodes, tags: [...tags] };
 }
 
-async function termNodes(tx: Tx, site: PublicSite, rows: Term[]): Promise<Map<string, TermNode>> {
+async function termNodes(
+  tx: Tx,
+  site: PublicSite,
+  rows: Term[],
+  tags: Set<string>,
+): Promise<Map<string, TermNode>> {
   const ids = [...new Set(rows.map((r) => r.id))];
   const counts = ids.length
     ? await tx
@@ -594,6 +641,7 @@ async function termNodes(tx: Tx, site: PublicSite, rows: Term[]): Promise<Map<st
     tx,
     site,
     rows.map((r) => ({ fields: fieldsOf.get(r.taxonomy)!, data: r.meta })),
+    tags,
   );
   return new Map(
     rows.map((r, i) => [
@@ -630,7 +678,8 @@ export function themeImage(row: Media): ThemeImage {
 }
 
 /** `menus.<location>.items[]`: links to unpublished posts or deleted terms are left out. */
-async function menuScope(tx: Tx, site: PublicSite, path: string): Promise<Scope> {
+async function menuScope(ctx: Ctx): Promise<[string[], Scope]> {
+  const { tx, site } = ctx;
   const all = await listMenus(tx, site.id);
   const items = all.flatMap((m) => flatten(m.items));
   const refs = (kind: MenuItem['kind']) => [
@@ -653,7 +702,7 @@ async function menuScope(tx: Tx, site: PublicSite, path: string): Promise<Scope>
   ]);
   const postLinks = await postUrls(tx, site, live);
   const termLinks = new Map(termRows.map((t) => [t.id, termUrl(site, t)]));
-  const current = safeDecode(path);
+  const current = safeDecode(ctx.req.path);
   const build = (list: MenuItem[]): Scope[] =>
     list.flatMap((item) => {
       const url =
@@ -665,7 +714,11 @@ async function menuScope(tx: Tx, site: PublicSite, path: string): Promise<Scope>
       const active = url === current || children.some((c) => c.active === true);
       return [{ label: item.label, url, active, children }];
     });
-  return Object.fromEntries(all.map((m) => [m.location, { items: build(m.items) }]));
+  // Drafts in menus too: they appear once published.
+  return [
+    ['menus', ...postIds.map((id) => `post:${id}`)],
+    Object.fromEntries(all.map((m) => [m.location, { items: build(m.items) }])),
+  ];
 }
 
 function safeDecode(path: string): string {
@@ -679,7 +732,9 @@ function safeDecode(path: string): string {
 const MAX_RENDERED_ENTRIES = 200;
 
 /** `collections.<key>.entries[]`: published entries with their declared fields resolved. */
-async function collectionScope(tx: Tx, site: PublicSite): Promise<Scope> {
+async function collectionScope(ctx: Ctx): Promise<[string[], Scope]> {
+  const { tx, site } = ctx;
+  const tags = new Set(['collections']);
   const list = await listCollections(tx, site.id);
   const entries = await Promise.all(
     list.map((c) =>
@@ -692,6 +747,7 @@ async function collectionScope(tx: Tx, site: PublicSite): Promise<Scope> {
     tx,
     site,
     list.flatMap((c, i) => entries[i]!.map((e) => ({ fields: c.fields, data: e.data }))),
+    tags,
   );
   const result: Scope = {};
   let n = 0;
@@ -701,7 +757,7 @@ async function collectionScope(tx: Tx, site: PublicSite): Promise<Scope> {
       entries: entries[i]!.map((e) => ({ id: e.id, ...resolved[n++] })),
     };
   }
-  return result;
+  return [[...tags], result];
 }
 
 /**
@@ -713,6 +769,8 @@ async function resolveFields(
   tx: Tx,
   site: PublicSite,
   items: { fields: FieldDef[]; data: Record<string, unknown> }[],
+  /** Gets a `post:<id>` tag for every referenced post. */
+  tags: Set<string>,
 ): Promise<Scope[]> {
   const cleaned = items.map(({ fields, data }) =>
     fields.map((f) => ({ field: f, value: storedFieldValue(f, data[f.key]) })),
@@ -722,6 +780,7 @@ async function resolveFields(
     values
       .filter((v) => v.field.type === 'reference' && (v.value as Reference | null)?.kind === kind)
       .map((v) => (v.value as Reference).id);
+  for (const id of refs('post')) tags.add(`post:${id}`);
   const imageIds = values
     .filter((v) => v.field.type === 'image' && v.value !== null)
     .map((v) => v.value as string);

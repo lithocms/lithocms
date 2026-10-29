@@ -85,6 +85,13 @@
       "when": 1793231298248,
       "tag": "0011_search",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793254175810,
+      "tag": "0012_page_cache",
+      "breakpoints": true
     }
   ]
 }

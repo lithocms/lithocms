@@ -3,12 +3,13 @@ import { sql } from 'drizzle-orm';
 import { fromDrizzle, PgBoss } from 'pg-boss';
 import type { Logger } from 'pino';
 import type { Mailer } from './mailer.js';
+import type { PageCache } from './page-cache.js';
 
 // Background jobs on pg-boss. The owner role installs and migrates the `pgboss` schema at
 // startup; the app runs the queue as the runtime role.
 
 const SCHEMA = 'pgboss';
-const QUEUES = { formNotify: 'form-notify' } as const;
+const QUEUES = { formNotify: 'form-notify', cacheSweep: 'cache-sweep' } as const;
 
 interface FormNotifyJob {
   siteId: string;
@@ -56,16 +57,22 @@ export async function startJobs({
   url,
   db,
   mailer,
+  cache,
   log,
 }: {
   url: string;
   db: Db;
   mailer: Mailer | null;
+  cache?: PageCache;
   log: Logger;
 }): Promise<Jobs> {
   const boss = new PgBoss({ connectionString: url, schema: SCHEMA, migrate: false });
   boss.on('error', (err) => log.error({ err }, 'job queue error'));
   await boss.start();
+  if (cache) {
+    await boss.schedule(QUEUES.cacheSweep, '*/15 * * * *');
+    await boss.work(QUEUES.cacheSweep, () => cache.sweep());
+  }
   if (mailer) {
     await boss.work<FormNotifyJob>(QUEUES.formNotify, async ([job]) => {
       const { siteId, submissionId } = job!.data;

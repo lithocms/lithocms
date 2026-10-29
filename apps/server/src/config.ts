@@ -14,6 +14,8 @@ const Config = z.object({
   AUTH_SECRET: z.string().min(32),
   /** Uploaded media; a volume in production. */
   MEDIA_DIR: z.string().default('/data/media'),
+  /** Rendered pages; a volume in production. Empty turns the page cache off. */
+  CACHE_DIR: z.string().default('/data/cache'),
   /** Bundled themes, one folder per theme. */
   THEMES_DIR: z.string().default('/app/themes'),
   /** Bundled theme(s) for sites without an active theme, in order of preference. */

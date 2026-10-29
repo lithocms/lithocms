@@ -21,5 +21,6 @@ test-results/
 CLAUDE.md
 CLAUDE.local.md
 
-# dev stack media uploads
+# dev stack media uploads and page cache
 .dev-media/
+.dev-cache/

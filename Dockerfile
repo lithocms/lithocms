@@ -19,8 +19,8 @@ FROM node:${NODE_VERSION}-slim
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /out .
-# Mount the media volume here.
-RUN mkdir -p /data/media && chown node:node /data/media
+# Mount the media and cache volumes here.
+RUN mkdir -p /data/media /data/cache && chown node:node /data/media /data/cache
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s \

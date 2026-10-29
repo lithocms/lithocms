@@ -45,6 +45,7 @@ services:
       AUTH_SECRET: dev-only-secret-dev-only-secret-dev-only
       DEV_SITE_DOMAIN: site.localhost
       MEDIA_DIR: /src/.dev-media
+      CACHE_DIR: /src/.dev-cache
       SMTP_URL: smtp://mailpit:1025
     volumes: *node-modules
     depends_on:
