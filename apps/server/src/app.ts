@@ -102,7 +102,7 @@ export function buildApp({
   });
 
   registerAuthRoutes(app, { auth, db });
-  registerApi(app, { db, auth, secret, store });
+  registerApi(app, { db, auth, secret, store, themes });
   registerMediaFiles(app, store);
   // TODO(phase-1): the admin SPA on the admin origin.
   registerPublic(app, { db, themes, adminUrl, secret, jobs, cache });

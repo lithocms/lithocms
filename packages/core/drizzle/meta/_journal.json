@@ -92,6 +92,13 @@
       "when": 1793254175810,
       "tag": "0012_page_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793256846489,
+      "tag": "0013_theme_settings",
+      "breakpoints": true
     }
   ]
 }

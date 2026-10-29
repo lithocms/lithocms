@@ -4,6 +4,8 @@ import {
   safe,
   stripHtml,
   type RenderHooks,
+  type SectionSchema,
+  type Setting,
   type ThemeEngine,
   type ThemeImage,
   type ThemeManifest,
@@ -21,6 +23,12 @@ import { hitRedirect } from '../content/redirects.js';
 import { cacheVersion } from './cache.js';
 import { renderContent } from '../content/posts.js';
 import { enabledSlots } from '../content/slots.js';
+import {
+  effectiveSection,
+  effectiveSettings,
+  loadThemeSettings,
+  type StaticSection,
+} from '../themes/settings.js';
 import type { Tx } from '../db/client.js';
 import {
   collectionEntries,
@@ -45,6 +53,8 @@ import {
 
 /** A loaded theme version, ready to render. */
 export interface PublicTheme {
+  /** `themes.id`: the site's settings for this theme are stored under it. */
+  themeId: string;
   engine: ThemeEngine;
   manifest: ThemeManifest;
   /** Fingerprinted URL of a file in the theme's `assets/`. */
@@ -130,6 +140,17 @@ export async function renderPublic(
   const status = page.pageType !== '404' ? 200 : redirect ? 410 : 404;
 
   const [logo] = await images(tx, site.id, [setting(site, 'logo')]);
+  const stored = await loadThemeSettings(tx, site.id, theme.themeId);
+  const defs = theme.manifest.settings ?? [];
+  const settings = effectiveSettings(defs, stored.values);
+  const staticSections = new Map(
+    await Promise.all(
+      Object.entries(theme.engine.sections).map(
+        async ([name, schema]) =>
+          [name, await sectionScope(ctx, schema, stored.sections[name])] as const,
+      ),
+    ),
+  );
   const canonical = page.seo.canonical ?? req.origin + req.path;
   const lazy = {
     categories: [categories.tags, { top: categories.top, all: categories.all }],
@@ -147,11 +168,9 @@ export async function renderPublic(
       language_direction: RTL.includes(site.locale.slice(0, 2)) ? 'rtl' : 'ltr',
     },
     theme: {
-      settings: Object.fromEntries(
-        (theme.manifest.settings ?? []).map((s) => [s.id, s.default ?? null]),
-      ),
+      settings: await settingValues(ctx, defs, settings),
       tokens: theme.manifest.tokens ?? {},
-      css_variables: safe(cssVariables(theme.manifest)),
+      css_variables: safe(cssVariables(withSettingTokens(theme.manifest, settings))),
     },
     request: { path: req.path, page_type: page.pageType, query: req.search ?? '' },
 
@@ -200,7 +219,7 @@ export async function renderPublic(
           ? html.replace(/<script\b/gi, `<script nonce="${escapeHtml(req.scriptNonce)}"`)
           : html;
       },
-      section: () => undefined,
+      section: (name) => staticSections.get(name),
     } satisfies RenderHooks,
   });
   return { status, html, cache: { tags: [...tags], version } };
@@ -554,7 +573,78 @@ async function pageExtras(ctx: Ctx, row: PostRow): Promise<Scope> {
   return {
     parent: parents[0] ? link(parents[0]) : null,
     children: children.map(link),
-    sections: row.sections ?? [],
+    sections: (
+      await Promise.all(
+        (row.sections ?? []).map(async (s) => {
+          const schema = ctx.theme.engine.sections[s.type];
+          return schema ? [{ type: s.type, ...(await sectionScope(ctx, schema, s)) }] : [];
+        }),
+      )
+    ).flat(),
+  };
+}
+
+/** Color and font settings named like a token override it (customizer). */
+function withSettingTokens(
+  manifest: ThemeManifest,
+  settings: Record<string, unknown>,
+): Pick<ThemeManifest, 'tokens' | 'dark_tokens'> {
+  const tokens = { ...manifest.tokens };
+  for (const def of manifest.settings ?? []) {
+    const value = settings[def.id];
+    if (typeof value !== 'string') continue;
+    const group = def.type === 'color' ? 'colors' : def.type === 'font' ? 'fonts' : undefined;
+    if (group && tokens[group] && def.id in tokens[group]) {
+      tokens[group] = { ...tokens[group], [def.id]: value };
+    }
+  }
+  return { tokens, dark_tokens: manifest.dark_tokens };
+}
+
+/** Effective setting values as templates see them: images and rich text resolved. */
+async function settingValues(
+  ctx: Ctx,
+  defs: Setting[],
+  values: Record<string, unknown>,
+): Promise<Scope> {
+  const imageIds = defs.filter((d) => d.type === 'image').map((d) => values[d.id] as string | null);
+  const found = new Map((await images(ctx.tx, ctx.site.id, imageIds)).map((m) => [m.id, m]));
+  return Object.fromEntries(
+    await Promise.all(
+      defs.map(async (d): Promise<[string, unknown]> => {
+        const value = values[d.id];
+        if (value === null) return [d.id, null];
+        if (d.type === 'image') {
+          const media = found.get(value as string);
+          return [d.id, media ? themeImage(media) : null];
+        }
+        if (d.type === 'richtext') {
+          return [d.id, safe(await renderContent(ctx.tx, ctx.site.id, value as Doc))];
+        }
+        return [d.id, value];
+      }),
+    ),
+  );
+}
+
+async function sectionScope(
+  ctx: Ctx,
+  schema: SectionSchema,
+  data: Partial<StaticSection> | undefined,
+): Promise<StaticSection> {
+  const section = effectiveSection(schema, data);
+  return {
+    settings: await settingValues(ctx, schema.settings ?? [], section.settings),
+    blocks: await Promise.all(
+      section.blocks.map(async (block) => ({
+        type: block.type,
+        settings: await settingValues(
+          ctx,
+          schema.blocks?.find((b) => b.type === block.type)?.settings ?? [],
+          block.settings,
+        ),
+      })),
+    ),
   };
 }
 

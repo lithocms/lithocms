@@ -1,6 +1,6 @@
 import { createThemeEngine, type RenderHooks, type ThemeFiles, type ThemeImage } from './engine.js';
 import { safe } from './html.js';
-import { SectionSchema, ThemeManifest } from './manifest.js';
+import { SCHEMA_BLOCK, SectionSchema, ThemeManifest } from './manifest.js';
 
 export interface ValidationIssue {
   path: string;
@@ -47,7 +47,6 @@ const ASSET_TYPES = [
   'ico',
 ];
 const LIMITS = { files: 300, total: 10 * 1024 * 1024, file: 2 * 1024 * 1024, liquid: 200 * 1024 };
-const SCHEMA_BLOCK = /{%-?\s*schema\s*-?%}([\s\S]*?){%-?\s*endschema\s*-?%}/;
 
 const size = (content: string | Uint8Array) =>
   typeof content === 'string' ? Buffer.byteLength(content) : content.byteLength;

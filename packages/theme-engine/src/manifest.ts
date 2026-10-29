@@ -59,6 +59,8 @@ export const Setting = z.strictObject({
   options: z.array(z.strictObject({ value: z.string(), label: Label.optional() })).optional(),
 });
 
+export type Setting = z.infer<typeof Setting>;
+
 const Tokens = z.strictObject({
   colors: z.record(Key, CssValue).optional(),
   fonts: z.record(Key, CssValue).optional(),
@@ -115,6 +117,19 @@ export const SectionSchema = z.strictObject({
   max_blocks: z.int().min(1).max(50).optional(),
 });
 export type SectionSchema = z.infer<typeof SectionSchema>;
+
+export const SCHEMA_BLOCK = /{%-?\s*schema\s*-?%}([\s\S]*?){%-?\s*endschema\s*-?%}/;
+
+/** The `{% schema %}` of a section file, or undefined when missing or invalid. */
+export function sectionSchema(source: string): SectionSchema | undefined {
+  const json = SCHEMA_BLOCK.exec(source)?.[1];
+  if (!json) return undefined;
+  try {
+    return SectionSchema.safeParse(JSON.parse(json)).data;
+  } catch {
+    return undefined;
+  }
+}
 
 type Tokens = z.infer<typeof Tokens>;
 

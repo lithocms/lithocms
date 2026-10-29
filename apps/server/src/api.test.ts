@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { buildApp } from './app.js';
-import { NO_THEMES } from './testing/themes.js';
+import { TEST_THEME, testThemes } from './testing/themes.js';
 import { createAuth, createPasswordUser } from './auth.js';
 import { createSiteResolver } from './sites.js';
 
@@ -48,6 +48,21 @@ beforeAll(async () => {
     { domain: 'b.example', siteId: siteB, isPrimary: true },
   ]);
   mediaDir = await mkdtemp(join(tmpdir(), 'litho-api-media-'));
+  const owner = createDb(tdb.ownerUrl);
+  const themes = await testThemes(owner.db, {
+    test: {
+      ...TEST_THEME,
+      'theme.json': JSON.stringify({
+        name: 'Test',
+        slug: 'test',
+        version: '1.0.0',
+        settings: [{ id: 'whatsapp', type: 'text' }],
+      }),
+      'sections/hero.liquid':
+        '<h1>{{ section.settings.heading }}</h1>{% schema %}{"name":{"en":"Hero"},"settings":[{"id":"heading","type":"text"}]}{% endschema %}',
+    },
+  });
+  await owner.pool.end();
   const auth = createAuth({ db, adminUrl, secret });
   const sites = await createSiteResolver(db);
   const store = createDiskStore(mediaDir);
@@ -58,7 +73,7 @@ beforeAll(async () => {
     auth,
     secret,
     store,
-    themes: NO_THEMES,
+    themes,
     logLevel: 'silent',
   });
 
@@ -319,6 +334,46 @@ describe('admin API', () => {
   });
 });
 
+describe('theme', () => {
+  it('lists the active theme with its settings and sections', async () => {
+    const res = await call('editor', 'GET', a('/theme'));
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      slug: 'test',
+      settings: [{ id: 'whatsapp', type: 'text' }],
+      values: {},
+      sections: [{ name: 'hero', data: null }],
+    });
+  });
+
+  it('saves settings and sections for admins only, validated, per site', async () => {
+    expect((await call('editor', 'PUT', a('/theme/settings'), { whatsapp: '1' })).statusCode).toBe(
+      403,
+    );
+    expect((await call('root', 'PUT', a('/theme/settings'), { nope: '1' })).statusCode).toBe(400);
+    expect(
+      (await call('outsider', 'PUT', a('/theme/settings'), { whatsapp: '1' })).statusCode,
+    ).toBe(404);
+    const saved = await call('root', 'PUT', a('/theme/settings'), { whatsapp: '905550000000' });
+    expect(saved.json()).toEqual({ values: { whatsapp: '905550000000' } });
+    expect((await call('root', 'PUT', a('/theme/sections/none'), {})).statusCode).toBe(404);
+    expect(
+      (await call('root', 'PUT', a('/theme/sections/hero'), { settings: { heading: 1 } }))
+        .statusCode,
+    ).toBe(400);
+    const hero = await call('root', 'PUT', a('/theme/sections/hero'), {
+      settings: { heading: 'Merhaba' },
+    });
+    expect(hero.json()).toEqual({ settings: { heading: 'Merhaba' }, blocks: [] });
+    expect((await call('root', 'GET', a('/theme'))).json()).toMatchObject({
+      values: { whatsapp: '905550000000' },
+      sections: [{ name: 'hero', data: { settings: { heading: 'Merhaba' } } }],
+    });
+    const b = await call('outsider', 'GET', `/api/sites/${siteB}/theme`);
+    expect(b.json()).toMatchObject({ values: {}, sections: [{ name: 'hero', data: null }] });
+  });
+});
+
 describe('media', () => {
   const upload = (who: string, body: Buffer, type: string, query = 'filename=pic.jpg&alt=Pic') =>
     app.inject({
@@ -378,9 +433,9 @@ describe('media', () => {
   it('does not serve paths outside the media layout', async () => {
     for (const url of ['/media/../../etc/passwd', '/media/2026/10/x.jpg', '/media/%2e%2e/secret']) {
       const res = await app.inject({ method: 'GET', url, headers: { host: 'a.example' } });
-      // Never a file: 404 from the media route, or a page (no theme here) after normalization.
-      expect([404, 503], url).toContain(res.statusCode);
-      expect(res.headers['content-type'], url).not.toMatch(/^image\//);
+      // Never a file: 404 from the media route, or a theme page or redirect after normalization.
+      expect([301, 404], url).toContain(res.statusCode);
+      expect(String(res.headers['content-type']), url).not.toMatch(/^image\//);
     }
   });
 });
