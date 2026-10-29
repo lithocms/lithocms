@@ -31,7 +31,16 @@ Each theme keeps its own customizer values, so switching back and forth loses no
 
 ## Working with Claude
 
-Give Claude this folder and a brief like:
+**Connected to the site (no files to move).** In admin, open **Claude connections**, create a
+connection with the _Design_ scope and run the command it shows to add the site to Claude Code.
+Then describe the site you want. Claude reads this guide (`guide://theme-authoring`), starts a
+copy of this theme with `theme_create_draft`, edits it with `theme_update_files` (every save is
+validated and the errors come back with file and line), sets values with `theme_settings_update`,
+and gives you a `theme_preview` link. Nothing changes for visitors until you say so and it calls
+`theme_activate`; `theme_rollback` undoes it. A live version is never edited in place: Claude raises
+`version` in `theme.json` to save the next one.
+
+**With a folder.** Give Claude this folder and a brief like:
 
 > This is a LithoCMS theme. Read README.md first and follow its rules. Turn it into a theme for
 > _[who the site is for and what it must get visitors to do]_. Look and feel: _[words, references,

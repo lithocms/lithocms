@@ -1,6 +1,7 @@
 import { registerBundledTheme, type Db, type PublicTheme } from '@lithocms/core';
 import {
   createThemeEngine,
+  TEXT_FILE,
   ThemeManifest,
   validateTheme,
   type ThemeBundle,
@@ -10,7 +11,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import type { FastifyBaseLogger } from 'fastify';
-import { TEXT_FILE } from './theme-zip.js';
 
 export interface ThemeAsset {
   data: Buffer;

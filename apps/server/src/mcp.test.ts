@@ -375,3 +375,209 @@ describe('MCP content tools', () => {
     expect((await rpc(token, 'tools/list')).statusCode).toBe(401);
   });
 });
+
+describe('MCP design tools', () => {
+  let bundled: string;
+  let draft: string;
+
+  beforeAll(async () => {
+    for (const [who, site] of [
+      ['designer', siteA],
+      ['outsiderDesigner', siteB],
+    ] as const) {
+      const owner = who === 'designer' ? 'admin' : 'outsider';
+      // The outsider was demoted and removed above; give them back an admin seat on B.
+      if (owner === 'outsider') {
+        const [user] = await db
+          .select({ id: schema.users.id })
+          .from(schema.users)
+          .where(eq(schema.users.email, 'outsider@example.com'));
+        await db
+          .insert(schema.memberships)
+          .values({ userId: user!.id, siteId: siteB, role: 'admin' });
+      }
+      const res = await rest(owner, 'POST', `/api/sites/${site}/mcp-tokens`, {
+        name: 'Designer',
+        scopes: ['content', 'design'],
+      });
+      tokens[who] = res.json<{ token: string }>().token;
+    }
+    const list = await callTool<{
+      themes: { slug: string; versions: { theme_version_id: string }[] }[];
+    }>('designer', 'theme_list');
+    bundled = list.data.themes.find((t) => t.slug === 'test')!.versions[0]!.theme_version_id;
+  });
+
+  it('are offered only with the design scope', async () => {
+    const list = await rpc(tokens.author!, 'tools/list');
+    const names = list
+      .json<{ result: { tools: { name: string }[] } }>()
+      .result.tools.map((t) => t.name);
+    expect(names).not.toContain('theme_list');
+  });
+
+  it('start a draft from a theme and read its files', async () => {
+    const created = await callTool<{ theme_version_id: string; valid: boolean; version: string }>(
+      'designer',
+      'theme_create_draft',
+      { name: 'Claude Theme', base_theme_version_id: bundled },
+    );
+    expect(created.data).toMatchObject({ valid: true, version: '0.1.0' });
+    draft = created.data.theme_version_id;
+
+    const listed = await callTool<{ files: { path: string }[] }>('designer', 'theme_get_files', {
+      theme_version_id: draft,
+    });
+    expect(listed.data.files.map((f) => f.path)).toContain('templates/index.liquid');
+    const read = await callTool<{ files: { content: string }[] }>('designer', 'theme_get_files', {
+      theme_version_id: draft,
+      paths: ['theme.json'],
+    });
+    expect(JSON.parse(read.data.files[0]!.content)).toMatchObject({
+      name: 'Claude Theme',
+      slug: 'claude-theme',
+      version: '0.1.0',
+    });
+
+    const again = await callTool('designer', 'theme_create_draft', { name: 'Claude Theme' });
+    expect(again).toMatchObject({ isError: true, data: { code: 'conflict' } });
+  });
+
+  it('keep an invalid draft, which cannot be previewed or activated, until it is fixed', async () => {
+    const broken = await callTool<{ valid: boolean; status: string; errors: { rule: string }[] }>(
+      'designer',
+      'theme_update_files',
+      {
+        theme_version_id: draft,
+        files: [
+          { path: 'templates/index.liquid', content: '<h1>Hi</h1><script>alert(1)</script>' },
+        ],
+      },
+    );
+    expect(broken.data).toMatchObject({ valid: false, status: 'invalid' });
+    expect(broken.data.errors.map((e) => e.rule)).toContain('inline-script');
+    expect(await callTool('designer', 'theme_preview', { theme_version_id: draft })).toMatchObject({
+      isError: true,
+      data: { code: 'validation_failed' },
+    });
+    expect(await callTool('designer', 'theme_activate', { theme_version_id: draft })).toMatchObject(
+      {
+        isError: true,
+        data: { code: 'conflict' },
+      },
+    );
+
+    const dry = await callTool<{ dry_run: boolean; valid: boolean }>(
+      'designer',
+      'theme_update_files',
+      {
+        theme_version_id: draft,
+        files: [{ path: 'templates/index.liquid', content: '<h1>{{ site.name }}</h1>' }],
+        dry_run: true,
+      },
+    );
+    expect(dry.data).toMatchObject({ dry_run: true, valid: true });
+    const fixed = await callTool<{ valid: boolean; status: string }>(
+      'designer',
+      'theme_update_files',
+      {
+        theme_version_id: draft,
+        files: [{ path: 'templates/index.liquid', content: '<h1>{{ site.name }} by Claude</h1>' }],
+      },
+    );
+    expect(fixed.data).toMatchObject({ valid: true, status: 'valid' });
+  });
+
+  it('preview a valid draft on the site, then activate and roll back', async () => {
+    const preview = await callTool<{ url: string }>('designer', 'theme_preview', {
+      theme_version_id: draft,
+      path: '/search/',
+    });
+    const url = new URL(preview.data.url);
+    expect(url.origin).toBe('https://a.example');
+    const opened = await app.inject({
+      method: 'GET',
+      url: url.pathname + url.search,
+      headers: { host: 'a.example' },
+    });
+    expect(opened.statusCode).toBe(303);
+    expect(opened.headers.location).toBe('/search/');
+    const cookie = String(opened.headers['set-cookie']).split(';')[0]!;
+    const page = await app.inject({
+      method: 'GET',
+      url: '/',
+      headers: { host: 'a.example', cookie },
+    });
+    expect(page.body).toContain('A by Claude');
+
+    const on = await callTool<{ active_theme_version_id: string }>('designer', 'theme_activate', {
+      theme_version_id: draft,
+    });
+    expect(on.data.active_theme_version_id).toBe(draft);
+    const live = await app.inject({ method: 'GET', url: '/', headers: { host: 'a.example' } });
+    expect(live.body).toContain('A by Claude');
+
+    const changeLive = await callTool('designer', 'theme_update_files', {
+      theme_version_id: draft,
+      files: [{ path: 'templates/index.liquid', content: '<h1>Changed</h1>' }],
+    });
+    expect(changeLive).toMatchObject({ isError: true, data: { code: 'conflict' } });
+
+    const back = await callTool<{ active_theme_version_id: string | null }>(
+      'designer',
+      'theme_rollback',
+    );
+    expect(back.data.active_theme_version_id).toBeNull();
+  });
+
+  it('change setting values the theme declares', async () => {
+    const manifest = {
+      name: 'Claude Theme',
+      slug: 'claude-theme',
+      version: '0.1.0',
+      settings: [{ id: 'accent', type: 'color', default: '#000000' }],
+    };
+    await callTool('designer', 'theme_update_files', {
+      theme_version_id: draft,
+      files: [{ path: 'theme.json', content: JSON.stringify(manifest) }],
+    });
+    const updated = await callTool<{ values: Record<string, unknown> }>(
+      'designer',
+      'theme_settings_update',
+      {
+        theme_version_id: draft,
+        values: { accent: '#c00000' },
+      },
+    );
+    expect(updated.data.values).toMatchObject({ accent: '#c00000' });
+    const got = await callTool<{ settings: { id: string }[]; values: Record<string, unknown> }>(
+      'designer',
+      'theme_settings_get',
+      { theme_version_id: draft },
+    );
+    expect(got.data.settings.map((s) => s.id)).toEqual(['accent']);
+    expect(got.data.values).toMatchObject({ accent: '#c00000' });
+  });
+
+  it('never change bundled themes, unsafe paths or another site’s themes', async () => {
+    const bundledEdit = await callTool('designer', 'theme_update_files', {
+      theme_version_id: bundled,
+      files: [{ path: 'templates/index.liquid', content: '<h1>x</h1>' }],
+    });
+    expect(bundledEdit).toMatchObject({ isError: true, data: { code: 'conflict' } });
+    const traversal = await callTool('designer', 'theme_update_files', {
+      theme_version_id: draft,
+      files: [{ path: '../../escape.liquid', content: 'x' }],
+    });
+    expect(traversal.isError).toBe(true);
+    const foreign = await callTool('outsiderDesigner', 'theme_get_files', {
+      theme_version_id: draft,
+    });
+    expect(foreign).toMatchObject({ isError: true, data: { code: 'not_found' } });
+    const foreignEdit = await callTool('outsiderDesigner', 'theme_update_files', {
+      theme_version_id: draft,
+      files: [{ path: 'templates/index.liquid', content: '<h1>x</h1>' }],
+    });
+    expect(foreignEdit).toMatchObject({ isError: true, data: { code: 'not_found' } });
+  });
+});

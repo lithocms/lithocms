@@ -97,10 +97,13 @@ export interface UploadedTheme {
   manifest: Record<string, unknown>;
   report: unknown;
   storagePath: string;
+  /** False keeps a draft that does not validate yet (MCP); it cannot be previewed or activated. */
+  valid?: boolean;
+  origin?: 'upload' | 'mcp';
 }
 
 /**
- * Records a valid uploaded theme. Uploading a version that already exists replaces its files,
+ * Records a site theme version. Saving a version that already exists replaces its files,
  * unless the site is using it. Returns the version and the storage path it replaced, if any.
  */
 export async function recordUploadedTheme(
@@ -119,7 +122,7 @@ export async function recordUploadedTheme(
     (
       await tx
         .insert(themes)
-        .values({ siteId, slug: upload.slug, name: upload.name, origin: 'upload' })
+        .values({ siteId, slug: upload.slug, name: upload.name, origin: upload.origin ?? 'upload' })
         .returning()
     )[0]!;
   if (existing && existing.name !== upload.name) {
@@ -141,7 +144,7 @@ export async function recordUploadedTheme(
     }
   }
   const values = {
-    status: 'valid' as const,
+    status: upload.valid === false ? ('invalid' as const) : ('valid' as const),
     manifest: upload.manifest,
     storagePath: upload.storagePath,
     validationReport: upload.report,

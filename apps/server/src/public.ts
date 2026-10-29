@@ -110,7 +110,7 @@ export function registerPublic(
   app.get('/_preview', (request, reply) => {
     const site = request.site;
     if (!site) return reply.code(404).send({ error: 'not_found' });
-    const { token, exit } = request.query as { token?: string; exit?: string };
+    const { token, exit, path } = request.query as { token?: string; exit?: string; path?: string };
     const secure = adminUrl.protocol === 'https:' ? '; Secure' : '';
     const cookie = (value: string, maxAge: number) =>
       `${PREVIEW_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
@@ -119,10 +119,12 @@ export function registerPublic(
     if (!valid) {
       return reply.code(400).type('text/plain').send('This preview link is invalid or expired.');
     }
+    // Only a path on this site: never `//host` or a backslash browsers read as one.
+    const to = path && /^\/(?![/\\])[^\s\\]*$/.test(path) ? path : '/';
     return reply
       .header('set-cookie', cookie(token!, valid.seconds))
       .header('cache-control', 'no-store')
-      .redirect('/', 303);
+      .redirect(to, 303);
   });
 
   app.get('/assets/:hash/*', async (request, reply) => {

@@ -8,6 +8,7 @@ import { registerAuthRoutes, type Auth } from './auth.js';
 import { registerMcp } from './mcp.js';
 import { registerMediaFiles } from './media-files.js';
 import { registerPublic } from './public.js';
+import { createThemeService } from './theme-service.js';
 import { normalizeHost, type ResolvedSite, type SiteResolver } from './sites.js';
 import type { Jobs } from './jobs.js';
 import type { PageCache } from './page-cache.js';
@@ -111,8 +112,9 @@ export function buildApp({
   });
 
   registerAuthRoutes(app, { auth, db, adminUrl });
-  registerApi(app, { db, auth, secret, store, themes, adminUrl });
-  registerMcp(app, { db, secret, store, themes, adminUrl });
+  const themeService = createThemeService({ db, themes, secret, adminUrl });
+  registerApi(app, { db, auth, secret, store, themes, themeService, adminUrl });
+  registerMcp(app, { db, secret, store, themes, themeService, adminUrl });
   registerMediaFiles(app, store);
   registerPublic(app, { db, themes, adminUrl, secret, jobs, cache });
 

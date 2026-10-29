@@ -1,11 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { registerContentTools } from './content.js';
+import { registerDesignTools } from './design.js';
 import type { McpContext } from './context.js';
 import { CONTENT_FORMAT } from './guides.js';
 
 const INSTRUCTIONS = `This is one LithoCMS site. Call site_info first. Write bodies in Markdown as described in
 guide://content-format. Everything you create is a draft until post_publish; tell the owner what you
-changed and give them the edit_url.`;
+changed and give them the edit_url. To design the site, read guide://theme-authoring, start from
+theme_create_draft, fix what theme_update_files reports, and give the owner the theme_preview link
+before theme_activate.`;
 
 /** A server for one request: only the tools the caller's scopes allow are registered. */
 export function createMcpServer(ctx: McpContext, version: string): McpServer {
@@ -28,5 +31,6 @@ export function createMcpServer(ctx: McpContext, version: string): McpServer {
     ctx.guides.themeAuthoring,
   );
   if (ctx.scopes.includes('content')) registerContentTools(server, ctx);
+  if (ctx.scopes.includes('design')) registerDesignTools(server, ctx);
   return server;
 }

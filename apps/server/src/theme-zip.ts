@@ -1,10 +1,7 @@
-import type { ThemeBundle } from '@lithocms/theme-engine';
+import { TEXT_FILE, type ThemeBundle } from '@lithocms/theme-engine';
 import { buffer as readAll } from 'node:stream/consumers';
 import yauzl from 'yauzl';
 import yazl from 'yazl';
-
-/** Text files are strings in a bundle, everything else bytes. */
-export const TEXT_FILE = /\.(liquid|json|css|js|svg|md|txt)$|^LICENSE$/;
 
 // Checked before anything is decompressed; the validator applies the real limits afterwards.
 // yauzl rejects absolute and `..` paths and entries that inflate past their declared size.
