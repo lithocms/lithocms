@@ -3,9 +3,18 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Actor } from '../content/audit.js';
 import { createPost, PostCreateInput, publishPost, updatePost } from '../content/posts.js';
 import { createDb, runMigrations, withSite, type Db, type Tx } from '../db/client.js';
-import { posts, sites, users } from '../db/schema.js';
+import { pageCache, posts, sites, users } from '../db/schema.js';
 import { startTestDatabase, type TestDatabase } from '../testing/postgres.js';
-import { cacheVersion, findCached, purgeCache, purgeTagsFor, storeCached } from './cache.js';
+import {
+  CACHE_MAX_ENTRIES,
+  CACHE_MAX_AGE_MS,
+  cachedIds,
+  cacheVersion,
+  findCached,
+  purgeCache,
+  purgeTagsFor,
+  storeCached,
+} from './cache.js';
 
 let tdb: TestDatabase;
 let db: Db;
@@ -68,6 +77,27 @@ describe('page cache', () => {
     expect(await withSite(db, siteB, (tx) => findCached(tx, siteB, '/a/'))).toEqual(
       expect.any(String),
     );
+  });
+
+  it('stops storing at the per-site entry limit', async () => {
+    await inA((tx) =>
+      tx.insert(pageCache).values(
+        Array.from({ length: CACHE_MAX_ENTRIES }, (_, i) => ({
+          siteId: siteA,
+          path: `/fill/${i}/`,
+        })),
+      ),
+    );
+    expect(await store('/one-more/', [])).toBeUndefined();
+    // Replacing an existing entry still works.
+    expect(await store('/fill/1/', [])).toEqual(expect.any(String));
+    // Expired entries neither count nor stay once swept.
+    await inA((tx) =>
+      tx.update(pageCache).set({ createdAt: new Date(Date.now() - CACHE_MAX_AGE_MS - 1000) }),
+    );
+    expect(await store('/one-more/', [])).toEqual(expect.any(String));
+    expect((await inA((tx) => cachedIds(tx, siteA))).size).toBe(1);
+    await inA((tx) => purgeCache(tx, siteA, 'all'));
   });
 
   it('does not store a render that overlapped a purge', async () => {

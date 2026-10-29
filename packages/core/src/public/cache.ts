@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, lte, sql } from 'drizzle-orm';
+import { and, count, eq, gt, inArray, lte, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { pageCache, pageCacheTags, posts, sites } from '../db/schema.js';
 
@@ -8,6 +8,9 @@ import { pageCache, pageCacheTags, posts, sites } from '../db/schema.js';
 
 /** Entries are re-rendered at least this often (form tokens, safety net). */
 export const CACHE_MAX_AGE_MS = 24 * 3_600_000;
+
+/** Beyond this many entries a site's further pages render uncached (disk bound). */
+export const CACHE_MAX_ENTRIES = 20_000;
 
 export type PurgeTags = string[] | 'all';
 
@@ -85,7 +88,7 @@ export async function findCached(
       and(
         eq(pageCache.siteId, siteId),
         eq(pageCache.path, path),
-        gt(pageCache.createdAt, new Date(Date.now() - CACHE_MAX_AGE_MS)),
+        gt(pageCache.createdAt, expiry()),
       ),
     );
   if (!row) return undefined;
@@ -124,6 +127,13 @@ export async function storeCached(
     .for('share');
   if (site?.v !== version) return undefined;
   await tx.delete(pageCache).where(and(eq(pageCache.siteId, siteId), eq(pageCache.path, path)));
+  // Live entries only; expired ones are deleted by `cachedIds` (the sweep). Concurrent stores
+  // may overshoot the limit by a few entries.
+  const [{ n } = { n: 0 }] = await tx
+    .select({ n: count() })
+    .from(pageCache)
+    .where(and(eq(pageCache.siteId, siteId), gt(pageCache.createdAt, expiry())));
+  if (n >= CACHE_MAX_ENTRIES) return undefined;
   const [row] = await tx.insert(pageCache).values({ siteId, path }).returning({ id: pageCache.id });
   if (tags.length) {
     await tx
@@ -133,16 +143,16 @@ export async function storeCached(
   return row!.id;
 }
 
-/** Ids of the site's current entries; files of other ids are stale. */
+/** Deletes the site's expired entries and returns the ids of the rest; other files are stale. */
 export async function cachedIds(tx: Tx, siteId: string): Promise<Set<string>> {
+  await tx
+    .delete(pageCache)
+    .where(and(eq(pageCache.siteId, siteId), lte(pageCache.createdAt, expiry())));
   const rows = await tx
     .select({ id: pageCache.id })
     .from(pageCache)
-    .where(
-      and(
-        eq(pageCache.siteId, siteId),
-        gt(pageCache.createdAt, new Date(Date.now() - CACHE_MAX_AGE_MS)),
-      ),
-    );
+    .where(eq(pageCache.siteId, siteId));
   return new Set(rows.map((r) => r.id));
 }
+
+const expiry = () => new Date(Date.now() - CACHE_MAX_AGE_MS);

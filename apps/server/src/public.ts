@@ -105,8 +105,9 @@ export function registerPublic(
     if (normalizeHost(request.hostname) !== site.primaryDomain) {
       return reply.redirect(`${originOf(site)}${request.url}`, 301);
     }
-    // Only plain URLs are cached: queries carry search terms and form results.
-    const cacheable = cache && !query && !request.url.includes('?');
+    // Only plain URLs in canonical form are cached: queries carry search terms and form
+    // results, and spelling variants of one page (case, escapes) must not each fill the disk.
+    const cacheable = cache && !query && !request.url.includes('?') && isCanonical(path);
     const send = (status: number, html: string, cached: 'hit' | 'miss' | 'off') => {
       // Rendered (and cached) with a placeholder; every response gets its own nonce.
       const nonce = randomBytes(16).toString('base64');
@@ -250,6 +251,15 @@ export function registerPublic(
     });
     done();
   });
+}
+
+/** The form browsers send for our own links: decoded NFC lowercase, percent-encoded again. */
+function isCanonical(path: string): boolean {
+  try {
+    return path === encodeURI(decodeURIComponent(path).normalize('NFC').toLowerCase());
+  } catch {
+    return false;
+  }
 }
 
 // Random per process (the page cache is dropped at startup), so neither themes nor content can
