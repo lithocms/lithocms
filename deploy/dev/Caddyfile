@@ -4,5 +4,15 @@
 }
 
 :80 {
-	reverse_proxy app:3000
+	# The admin SPA comes from the Vite dev server (hot reload); its API from the app.
+	@admin-ui {
+		host admin.localhost
+		not path /api/*
+	}
+	handle @admin-ui {
+		reverse_proxy admin:5173
+	}
+	handle {
+		reverse_proxy app:3000
+	}
 }
