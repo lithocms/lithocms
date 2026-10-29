@@ -22,7 +22,7 @@ import {
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { read, spend, write, type McpContext } from './context.js';
-import { tool } from './result.js';
+import { toolFor } from './result.js';
 
 // Tools for the `design` scope (MCP_SPEC.md). A site's own theme versions can be edited until
 // they are live; each save is validated, and only a valid version can be previewed or activated.
@@ -47,6 +47,7 @@ function report(r: ValidationReport) {
 }
 
 export function registerDesignTools(server: McpServer, ctx: McpContext): void {
+  const tool = toolFor(ctx.logError);
   const versionOf = (tx: Tx, id: string) => getThemeVersion(tx, ctx.siteId, id);
   const filesOf = async (v: ThemeVersion) => {
     const files = await ctx.themes.files(v.storagePath);

@@ -37,7 +37,7 @@ import {
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { read, write, type McpContext } from './context.js';
-import { parse, tool } from './result.js';
+import { parse, toolFor } from './result.js';
 
 // Tools for the `content` scope (MCP_SPEC.md). Posts are always written as drafts; publishing
 // is its own tool. Inputs are snake_case; the core services do the checks and the audit.
@@ -89,6 +89,7 @@ function postInput(args: PostWrite) {
 }
 
 export function registerContentTools(server: McpServer, ctx: McpContext): void {
+  const tool = toolFor(ctx.logError);
   const absolute = (path: string) => (ctx.siteOrigin ? ctx.siteOrigin + path : path);
   const editUrl = (id: string) => new URL(`/sites/${ctx.siteId}/posts/${id}`, ctx.adminUrl).href;
   const mediaUrl = (m: Media) => absolute(`/media/${m.path}`);

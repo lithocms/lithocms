@@ -10,7 +10,7 @@ import {
 import { startTestDatabase, type TestDatabase } from '@lithocms/core/testing';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Pool } from 'pg';
@@ -336,6 +336,27 @@ describe('MCP content tools', () => {
       alt: 'x',
     });
     expect(blocked).toMatchObject({ isError: true, data: { code: 'validation_failed' } });
+  });
+
+  it('answer unexpected failures without server details', async () => {
+    // A file where the media folder should be: storing the upload fails with ENOTDIR.
+    await rm(mediaDir, { recursive: true, force: true });
+    await writeFile(mediaDir, '');
+    try {
+      const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#00c' } })
+        .png()
+        .toBuffer();
+      const res = await callTool<{ code: string; message: string }>('author', 'media_upload', {
+        base64: png.toString('base64'),
+        filename: 'blue.png',
+        alt: 'A blue square',
+      });
+      expect(res).toMatchObject({ isError: true, data: { code: 'internal' } });
+      expect(res.data.message).not.toContain(mediaDir);
+    } finally {
+      await rm(mediaDir, { force: true });
+      await mkdir(mediaDir);
+    }
   });
 
   it('create terms and set menus', async () => {
