@@ -2,8 +2,10 @@ import {
   activateTheme,
   createMcpToken,
   listMcpTokens,
+  listOAuthApps,
   McpTokenInput,
   revokeMcpToken,
+  revokeOAuthApp,
   scopesFor,
   assertFormManager,
   can,
@@ -595,6 +597,7 @@ export function registerApi(
         ...mcpInfo(),
         grantable: scopesFor(req.actor!.role),
         tokens: await run(req, (tx, siteId, actor) => listMcpTokens(tx, siteId, actor)),
+        apps: await run(req, (tx, siteId, actor) => listOAuthApps(tx, siteId, actor)),
       }));
       api.post('/mcp-tokens', { schema: { body: McpTokenInput } }, async (req, reply) =>
         reply.code(201).send({
@@ -604,6 +607,10 @@ export function registerApi(
       );
       api.delete('/mcp-tokens/:id', { schema: { params: Id } }, async (req, reply) => {
         await run(req, (tx, siteId, actor) => revokeMcpToken(tx, siteId, actor, req.params.id));
+        return reply.code(204).send();
+      });
+      api.delete('/oauth-apps/:id', { schema: { params: Id } }, async (req, reply) => {
+        await run(req, (tx, siteId, actor) => revokeOAuthApp(tx, siteId, actor, req.params.id));
         return reply.code(204).send();
       });
 

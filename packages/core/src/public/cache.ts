@@ -41,6 +41,7 @@ export function purgeTagsFor(entry: {
     case 'theme_version':
     case 'theme_package':
     case 'mcp_token':
+    case 'oauth_app':
       return [];
     case 'media':
       return entry.action === 'media.upload' ? [] : 'all';

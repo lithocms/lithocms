@@ -13,6 +13,9 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
+    "@better-auth/cimd": "1.7.14",
+    "@better-auth/mcp": "1.7.14",
+    "@better-auth/oauth-provider": "1.7.14",
     "@better-auth/passkey": "^1.7.14",
     "@lithocms/core": "workspace:*",
     "@lithocms/mcp": "workspace:*",

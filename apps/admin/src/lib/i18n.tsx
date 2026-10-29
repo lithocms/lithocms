@@ -198,6 +198,25 @@ const en = {
   'claude.unused': 'not used yet',
   'claude.expiresAt': 'expires {d}',
   'claude.noExpiry': 'never expires',
+  'claude.apps': 'Connected apps',
+  'claude.appsHint':
+    'In Claude.ai or Claude Desktop, add a custom connector with this URL. You sign in here, pick this site and choose what it may do. Disconnect an app and it stops working at once.',
+  'claude.connectorUrl': 'Connector URL',
+  'claude.noApps': 'No apps connected yet.',
+  'claude.disconnect': 'Disconnect',
+  'claude.confirmDisconnect': 'Disconnect now',
+  'claude.connectedAt': 'Connected {d}',
+  'oauth.siteTitle': 'Choose a site',
+  'oauth.siteHint': 'The app you are connecting will work on this site only.',
+  'oauth.noSites': 'You are not a member of any site yet.',
+  'oauth.consentTitle': '{app} wants to work on {site}',
+  'oauth.consentHint':
+    'It acts as you, within what you allow here, and never beyond your role. You can disconnect it at any time under Claude connections.',
+  'oauth.notGrantable': 'Your role on this site cannot grant this.',
+  'oauth.allow': 'Allow',
+  'oauth.deny': 'Deny',
+  'oauth.expired':
+    'This request has expired or is no longer valid. Start connecting again from the app.',
   'settings.general': 'General',
   'settings.generalHint':
     'The site name appears in the header, the browser tab and search results.',
@@ -424,6 +443,25 @@ const tr: Record<Key, string> = {
   'claude.unused': 'henüz kullanılmadı',
   'claude.expiresAt': 'bitiş {d}',
   'claude.noExpiry': 'süresiz',
+  'claude.apps': 'Bağlı uygulamalar',
+  'claude.appsHint':
+    'Claude.ai veya Claude Desktop’ta bu URL ile özel bir bağlayıcı ekleyin. Burada giriş yapar, bu siteyi seçer ve neler yapabileceğini belirlersiniz. Bağlantısını kestiğiniz uygulama hemen çalışmayı bırakır.',
+  'claude.connectorUrl': 'Bağlayıcı URL’si',
+  'claude.noApps': 'Henüz bağlı uygulama yok.',
+  'claude.disconnect': 'Bağlantıyı kes',
+  'claude.confirmDisconnect': 'Şimdi kes',
+  'claude.connectedAt': '{d} tarihinde bağlandı',
+  'oauth.siteTitle': 'Bir site seçin',
+  'oauth.siteHint': 'Bağladığınız uygulama yalnızca bu sitede çalışacak.',
+  'oauth.noSites': 'Henüz hiçbir sitenin üyesi değilsiniz.',
+  'oauth.consentTitle': '{app}, {site} üzerinde çalışmak istiyor',
+  'oauth.consentHint':
+    'Burada izin verdiğiniz kadarıyla, sizin adınıza çalışır; rolünüzün ötesine asla geçemez. Bağlantısını istediğiniz zaman Claude bağlantıları sayfasından kesebilirsiniz.',
+  'oauth.notGrantable': 'Bu sitedeki rolünüz bu izni veremez.',
+  'oauth.allow': 'İzin ver',
+  'oauth.deny': 'Reddet',
+  'oauth.expired':
+    'Bu isteğin süresi dolmuş ya da artık geçerli değil. Bağlantıyı uygulamadan yeniden başlatın.',
   'settings.general': 'Genel',
   'settings.generalHint':
     'Site adı üst bilgide, tarayıcı sekmesinde ve arama sonuçlarında görünür.',

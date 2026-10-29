@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { registerApi } from './api.js';
 import { registerAuthRoutes, type Auth } from './auth.js';
 import { registerMcp } from './mcp.js';
+import { createOAuthVerifier, registerOAuth } from './oauth.js';
 import { registerMediaFiles } from './media-files.js';
 import { registerPublic } from './public.js';
 import { createThemeService } from './theme-service.js';
@@ -46,6 +47,9 @@ export interface AppOptions {
 // TODO(phase-4): keep /internal/* and health routes off the public origins at the proxy.
 const INTERNAL_ROUTES = new Set(['/healthz', '/readyz']);
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const OAUTH_CLIENT_ENDPOINTS = new Set(
+  ['token', 'register', 'revoke', 'introspect'].map((e) => `/api/auth/oauth2/${e}`),
+);
 
 export function buildApp({
   db,
@@ -73,11 +77,15 @@ export function buildApp({
     if (host === adminUrl.hostname) {
       request.log = request.log.child({ origin: 'admin' });
       // CSRF: admin API writes only from the admin SPA itself (on top of SameSite=Strict).
-      const write = !SAFE_METHODS.has(request.method) && request.url.startsWith('/api/');
+      // OAuth clients call the token-side endpoints from their own servers, without cookies.
+      const write =
+        !SAFE_METHODS.has(request.method) &&
+        request.url.startsWith('/api/') &&
+        !OAUTH_CLIENT_ENDPOINTS.has(request.url.split('?')[0]!);
       if (write && request.headers.origin !== adminUrl.origin) {
         return reply.code(403).send({ error: 'forbidden_origin' });
       }
-      const spa = !request.url.startsWith('/api/') && !request.url.startsWith('/mcp');
+      const spa = !['/api/', '/mcp', '/.well-known/'].some((p) => request.url.startsWith(p));
       if (admin && SAFE_METHODS.has(request.method) && spa) {
         return admin.serve(request, reply);
       }
@@ -114,7 +122,9 @@ export function buildApp({
   registerAuthRoutes(app, { auth, db, adminUrl });
   const themeService = createThemeService({ db, themes, secret, adminUrl });
   registerApi(app, { db, auth, secret, store, themes, themeService, adminUrl });
-  registerMcp(app, { db, secret, store, themes, themeService, adminUrl });
+  registerOAuth(app, { auth, db, adminUrl });
+  const verifyOAuth = createOAuthVerifier({ auth, db, adminUrl });
+  registerMcp(app, { db, secret, store, themes, themeService, adminUrl, verifyOAuth });
   registerMediaFiles(app, store);
   registerPublic(app, { db, themes, adminUrl, secret, jobs, cache });
 

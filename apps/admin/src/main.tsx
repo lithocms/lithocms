@@ -4,9 +4,11 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 import { Loading, Shell } from '@/components/shell';
 import { useApi } from '@/lib/api';
 import { I18nProvider } from '@/lib/i18n';
+import { oauthQuery } from '@/lib/oauth';
 import { SessionProvider, useSession } from '@/lib/session';
 import type { Me } from '@/lib/types';
 import { Login } from '@/pages/login';
+import { OAuthConsent, OAuthSite, ResumeAuthorization } from '@/pages/oauth';
 import { Overview } from '@/pages/overview';
 import { PostList } from '@/pages/posts';
 import './index.css';
@@ -36,6 +38,13 @@ function App() {
   const me = useApi<Me>('/me');
   if (me.loading && !me.data) return <Loading />;
   if (!me.data) return <Login onSignedIn={me.reload} />;
+  // An app's authorization sent a signed-in user to sign in (unless it asked for a fresh one).
+  const oauth = location.pathname === '/login' ? oauthQuery() : undefined;
+  if (oauth) {
+    const prompt = new URLSearchParams(oauth).get('prompt')?.split(' ') ?? [];
+    if (prompt.includes('login')) return <Login onSignedIn={me.reload} />;
+    return <ResumeAuthorization query={oauth} />;
+  }
   const first = me.data.sites[0];
   return (
     <SessionProvider me={me.data} reload={me.reload}>
@@ -65,6 +74,8 @@ function App() {
             <Route path="settings" element={<SiteSettingsPage />} />
             <Route path="claude" element={<ClaudePage />} />
           </Route>
+          <Route path="/oauth/site" element={<OAuthSite />} />
+          <Route path="/oauth/consent" element={<OAuthConsent />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
