@@ -1,0 +1,38 @@
+<header class="masthead">
+  <a class="wordmark" href="/" translate="no">
+    {%- if site.logo -%}
+      {{ site.logo | image_tag: widths: "160,320", sizes: "160px", loading: "eager", alt: site.name, class: "wordmark-logo" }}
+    {%- else -%}
+      {{ site.name }}
+    {%- endif -%}
+  </a>
+  <div class="masthead-end">
+    {%- if settings.cta_label != blank and settings.cta_url != blank -%}
+      <a class="button button-small" href="{{ settings.cta_url }}">{{ settings.cta_label }}</a>
+    {%- endif -%}
+    <details class="menu">
+      <summary><span class="menu-open">{{ 'menu' | t }}</span><span class="menu-close">{{ 'close' | t }}</span></summary>
+      <nav class="menu-panel" aria-label="{{ 'menu' | t }}">
+        <ul class="menu-list">
+          {%- for item in menus.primary.items -%}
+            <li>
+              <a href="{{ item.url }}" aria-current="{% if item.active %}page{% else %}false{% endif %}">{{ item.label }}</a>
+              {%- if item.children.size > 0 -%}
+                <ul class="menu-sub">
+                  {%- for child in item.children -%}
+                    <li><a href="{{ child.url }}" aria-current="{% if child.active %}page{% else %}false{% endif %}">{{ child.label }}</a></li>
+                  {%- endfor -%}
+                </ul>
+              {%- endif -%}
+            </li>
+          {%- endfor -%}
+        </ul>
+        <form class="menu-search" action="/" method="get" role="search">
+          <label class="visually-hidden" for="menu-q">{{ 'search' | t }}</label>
+          <input id="menu-q" type="search" name="s" placeholder="{{ 'search_placeholder' | t }}" autocomplete="off">
+          <button class="button" type="submit">{{ 'search' | t }}</button>
+        </form>
+      </nav>
+    </details>
+  </div>
+</header>

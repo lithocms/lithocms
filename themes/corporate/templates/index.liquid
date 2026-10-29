@@ -1,0 +1,20 @@
+{%- paginate posts by 6 -%}
+{%- if paginate.current_page == 1 -%}
+  {% section 'hero' %}
+  {% section 'facts' %}
+  {% section 'programs' %}
+  {% section 'picture' %}
+  {% section 'compare' %}
+  {% section 'letter' %}
+  {% section 'schedule' %}
+  {% section 'faq' %}
+  {% section 'news' %}
+  {% section 'contact' %}
+{%- else -%}
+  <section class="block listing">
+    <h1 class="head">{{ site.name }}</h1>
+    {% render 'post-rows', list: posts %}
+    {% render 'pagination', paginate: paginate %}
+  </section>
+{%- endif -%}
+{%- endpaginate -%}

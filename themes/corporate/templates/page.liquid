@@ -1,0 +1,16 @@
+<article class="block article">
+  <header class="article-head">
+    {%- if page.parent -%}<a class="article-up" href="{{ page.parent.url }}">{{ page.parent.title }}</a>{%- endif -%}
+    <h1 class="head">{{ page.title }}</h1>
+    {%- if page.excerpt != blank -%}<p class="lead">{{ page.excerpt }}</p>{%- endif -%}
+  </header>
+  {%- if page.featured_image -%}
+    <figure class="article-figure">{{ page.featured_image | image_tag: widths: "800,1200,1600", sizes: "(min-width: 1100px) 1100px, 100vw", loading: "eager" }}</figure>
+  {%- endif -%}
+  <div class="prose">{{ page.content }}</div>
+  {%- if page.children.size > 0 -%}
+    <ul class="rows article-children">
+      {%- for c in page.children -%}<li class="row"><a href="{{ c.url }}">{{ c.title }}</a><span aria-hidden="true">→</span></li>{%- endfor -%}
+    </ul>
+  {%- endif -%}
+</article>

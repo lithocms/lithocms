@@ -46,6 +46,7 @@ services:
       DEV_SITE_DOMAIN: site.localhost
       MEDIA_DIR: /src/.dev-media
       CACHE_DIR: /src/.dev-cache
+      THEMES_DIR: /src/themes
       SMTP_URL: smtp://mailpit:1025
     volumes: *node-modules
     depends_on:

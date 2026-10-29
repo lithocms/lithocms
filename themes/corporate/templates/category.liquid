@@ -1,0 +1,13 @@
+{%- paginate posts by 12 -%}
+<section class="block listing">
+  <header class="listing-head">
+    <h1 class="head">{{ term.name }}</h1>
+    {%- if term.description != blank -%}<p class="lead">{{ term.description }}</p>{%- endif -%}
+  </header>
+  {%- if term.children.size > 0 -%}
+    <ul class="chips">{%- for c in term.children -%}<li><a href="{{ c.url }}">{{ c.name }}</a></li>{%- endfor -%}</ul>
+  {%- endif -%}
+  {% render 'post-rows', list: posts %}
+  {% render 'pagination', paginate: paginate %}
+</section>
+{%- endpaginate -%}

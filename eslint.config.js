@@ -29,4 +29,17 @@ export default defineConfig(
     extends: [tseslint.configs.disableTypeChecked],
   },
   { files: ['**/*.config.{js,ts}'], rules: { 'no-restricted-syntax': 'off' } },
+  // Theme scripts run in the visitor's browser.
+  {
+    files: ['themes/**/*.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        window: 'readonly',
+        document: 'readonly',
+        matchMedia: 'readonly',
+        IntersectionObserver: 'readonly',
+      },
+    },
+  },
 );

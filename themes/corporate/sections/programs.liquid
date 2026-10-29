@@ -1,0 +1,44 @@
+{%- assign s = section.settings -%}
+{%- if section.blocks.size > 0 -%}
+<section class="block programs" id="programs">
+  <div class="sheet">
+    <h2 class="head rise">{{ s.heading | default: site.name }}</h2>
+    {%- if s.note != blank -%}<p class="sheet-note rise">{{ s.note }}</p>{%- endif -%}
+    {%- for b in section.blocks -%}
+      {%- if b.type == 'group' -%}
+        <h3 class="sheet-group rise">{{ b.settings.name }}</h3>
+      {%- else -%}
+        <div class="sheet-item rise">
+          <p class="sheet-line">
+            {%- if b.settings.href != blank -%}<a href="{{ b.settings.href }}">{{ b.settings.name }}</a>{%- else -%}<span>{{ b.settings.name }}</span>{%- endif -%}
+            <span class="sheet-leader" aria-hidden="true"></span>
+            <span class="sheet-value">{{ b.settings.value }}</span>
+          </p>
+          {%- if b.settings.description != blank -%}<p class="sheet-desc">{{ b.settings.description }}</p>{%- endif -%}
+        </div>
+      {%- endif -%}
+    {%- endfor -%}
+  </div>
+</section>
+{%- endif -%}
+{% schema %}
+{
+  "name": { "tr": "Programlar (liste)", "en": "Programmes (menu)" },
+  "settings": [
+    { "id": "heading", "type": "text", "label": { "tr": "Başlık", "en": "Heading" } },
+    { "id": "note", "type": "textarea", "label": { "tr": "Kısa not", "en": "Short note" } }
+  ],
+  "blocks": [
+    { "type": "group", "name": { "tr": "Grup başlığı", "en": "Group heading" }, "settings": [
+      { "id": "name", "type": "text", "label": { "tr": "Grup adı", "en": "Group name" } }
+    ] },
+    { "type": "item", "name": { "tr": "Program", "en": "Programme" }, "settings": [
+      { "id": "name", "type": "text", "label": { "tr": "Ad", "en": "Name" } },
+      { "id": "value", "type": "text", "label": { "tr": "Sağdaki değer (süre, fiyat…)", "en": "Value on the right (length, price…)" } },
+      { "id": "description", "type": "textarea", "label": { "tr": "Kısa açıklama", "en": "Short description" } },
+      { "id": "href", "type": "url", "label": { "tr": "Detay sayfası", "en": "Detail page" } }
+    ] }
+  ],
+  "max_blocks": 40
+}
+{% endschema %}

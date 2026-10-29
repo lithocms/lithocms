@@ -1,0 +1,23 @@
+{%- assign s = section.settings -%}
+{%- assign email = s.email | default: theme.settings.email -%}
+{%- if email != blank -%}
+<section class="contact" id="contact">
+  <h2 class="contact-sentence">{{ s.sentence | default: email }}</h2>
+  <a class="contact-email display-fit" style="--chars: {{ email.size }}" href="mailto:{{ email }}">{{ email }}</a>
+  <div class="contact-foot">
+    <p>{%- if theme.settings.phone != blank -%}<a href="tel:{{ theme.settings.phone | remove: ' ' }}">{{ theme.settings.phone }}</a>{%- endif -%}{%- if s.place != blank -%}<br>{{ s.place }}{%- endif -%}</p>
+    {%- if s.form_page != blank -%}<a class="button" href="{{ s.form_page }}">{{ 'contact_form' | t }}</a>{%- endif -%}
+  </div>
+</section>
+{%- endif -%}
+{% schema %}
+{
+  "name": { "tr": "İletişim", "en": "Contact" },
+  "settings": [
+    { "id": "sentence", "type": "text", "label": { "tr": "Ne için yazmalılar?", "en": "What should people write about?" } },
+    { "id": "email", "type": "text", "label": { "tr": "E-posta (boşsa tema ayarı)", "en": "Email (theme setting if empty)" } },
+    { "id": "place", "type": "text", "label": { "tr": "Şehir", "en": "City" } },
+    { "id": "form_page", "type": "url", "label": { "tr": "Form sayfası", "en": "Form page" } }
+  ]
+}
+{% endschema %}
