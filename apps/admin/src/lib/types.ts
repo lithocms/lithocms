@@ -42,6 +42,14 @@ export interface Post {
   createdAt: string;
 }
 
+export interface Revision {
+  id: string;
+  postId: string;
+  source: 'admin' | 'mcp' | 'import' | 'autosave';
+  snapshot: { title: string; excerpt: string };
+  createdAt: string;
+}
+
 export interface Page<T> {
   items: T[];
   nextCursor: string | null;
