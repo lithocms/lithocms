@@ -113,8 +113,13 @@ export function OAuthConsent() {
   const { client, site, grantable } = details.data;
   const offered = SCOPES.filter((s) => requested.includes(s));
   const scopes = chosen ?? offered.filter((s) => grantable.includes(s));
-  const appName = client.name ?? client.uri ?? client.id;
-  const appHost = client.uri && URL.canParse(client.uri) ? new URL(client.uri).host : client.id;
+  // The name and URI are whatever the app registered. What identifies it: the host its client
+  // id was fetched from (Client ID Metadata Document) and, always, where the browser goes next
+  // (the signed redirect URI).
+  const hostOf = (url: string | null) => (url && URL.canParse(url) ? new URL(url).host : null);
+  const appName = client.name ?? client.id;
+  const documentHost = client.id.startsWith('https://') ? hostOf(client.id) : null;
+  const returnHost = hostOf(params.get('redirect_uri')) ?? '?';
 
   const decide = async (accept: boolean) => {
     setBusy(true);
@@ -141,8 +146,13 @@ export function OAuthConsent() {
           <h1 className="text-title font-semibold text-balance break-words">
             {t('oauth.consentTitle', { app: appName, site: site.name })}
           </h1>
-          <p className="text-[13px] text-muted break-all" translate="no">
-            {appHost}
+          <p className="text-sm break-words">
+            {documentHost
+              ? t('oauth.identifiedBy', { host: documentHost })
+              : t('oauth.unverified', { host: returnHost })}
+          </p>
+          <p className="text-[13px] text-muted break-words">
+            {t('oauth.returnTo', { host: returnHost })}
           </p>
         </div>
         <fieldset className="grid gap-3">
