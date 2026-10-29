@@ -1,0 +1,10 @@
+<footer class="site-footer wrap">
+  {%- if menus.footer.items.size > 0 -%}
+    <ul class="nav">
+      {%- for item in menus.footer.items -%}<li><a href="{{ item.url }}">{{ item.label }}</a></li>{%- endfor -%}
+    </ul>
+  {%- endif -%}
+  <p class="muted">
+    {%- if settings.footer_note != blank -%}{{ settings.footer_note }}{%- else -%}© {{ 'now' | date: '%Y' }} {{ site.name }}{%- endif -%}
+  </p>
+</footer>

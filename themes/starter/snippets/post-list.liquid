@@ -1,0 +1,10 @@
+{%- comment -%} A list of posts; pass `list` (posts or search results). {%- endcomment -%}
+<ul class="post-list">
+  {%- for p in list -%}
+    <li>
+      <a href="{{ p.url }}">{{ p.title }}</a>
+      <time class="muted" datetime="{{ p.published_at | date: '%Y-%m-%d' }}">{{ p.published_at | date: 'medium' }}</time>
+      {%- if p.excerpt != blank -%}<p>{{ p.excerpt }}</p>{%- endif -%}
+    </li>
+  {%- endfor -%}
+</ul>

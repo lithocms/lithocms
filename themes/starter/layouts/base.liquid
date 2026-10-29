@@ -1,0 +1,25 @@
+{%- comment -%}
+  Wraps every page. Must contain {{ content_for_layout }}, {% head_extras %} and {% body_extras %}.
+{%- endcomment -%}
+<!doctype html>
+<html lang="{{ site.locale }}" dir="{{ site.language_direction }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{% seo %}
+<style>{{ theme.css_variables }}</style>
+<link rel="stylesheet" href="{{ 'theme.css' | asset_url }}">
+{% head_extras %}
+{% slot 'head' %}
+</head>
+<body class="page-{{ request.page_type }}">
+<a class="skip" href="#main">{{ 'skip' | t }}</a>
+{% render 'header', site: site, menus: menus %}
+<main id="main">
+{{ content_for_layout }}
+</main>
+{% render 'footer', site: site, menus: menus, settings: theme.settings %}
+{% slot 'footer' %}
+{% body_extras %}
+</body>
+</html>

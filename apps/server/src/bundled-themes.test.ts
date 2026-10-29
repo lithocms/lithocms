@@ -1,4 +1,5 @@
 import { createDb, runMigrations, schema, type Db } from '@lithocms/core';
+import { and, eq, isNull } from 'drizzle-orm';
 import { startTestDatabase, type TestDatabase } from '@lithocms/core/testing';
 import type { FastifyInstance } from 'fastify';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +24,7 @@ let tdb: TestDatabase;
 let db: Db;
 let pools: Pool[];
 let app: FastifyInstance;
+let siteId: string;
 
 const get = (url: string) => app.inject({ method: 'GET', url, headers: { host: 'demo.example' } });
 
@@ -41,6 +43,7 @@ beforeAll(async () => {
     await mkdtemp(join(tmpdir(), 'litho-theme-store-')),
   );
   const [site] = await owner.db.insert(schema.sites).values({ name: 'Demo' }).returning();
+  siteId = site!.id;
   await owner.db
     .insert(schema.siteDomains)
     .values({ domain: 'demo.example', siteId: site!.id, isPrimary: true });
@@ -118,6 +121,44 @@ describe('corporate theme', () => {
       const url = path.exec(html)?.[0];
       expect(url, String(path)).toBeDefined();
       expect((await get(url!)).statusCode).toBe(200);
+    }
+  });
+});
+
+describe('starter theme', () => {
+  it('renders every page type with one heading each', async () => {
+    const [version] = await db
+      .select({ id: schema.themeVersions.id, status: schema.themeVersions.status })
+      .from(schema.themeVersions)
+      .innerJoin(schema.themes, eq(schema.themes.id, schema.themeVersions.themeId))
+      .where(and(isNull(schema.themes.siteId), eq(schema.themes.slug, 'starter')));
+    expect(version?.status).toBe('valid');
+    await db
+      .update(schema.sites)
+      .set({ activeThemeVersionId: version!.id })
+      .where(eq(schema.sites.id, siteId));
+    try {
+      const post = /<ul class="post-list">\s*<li>\s*<a href="([^"]+)"/.exec(
+        (await get('/')).body,
+      )?.[1];
+      expect(post).toBeDefined();
+      for (const [url, status] of [
+        ['/', 200],
+        [new URL(post!, 'https://demo.example').pathname, 200],
+        ['/hakkimizda/', 200],
+        ['/?s=ielts', 200],
+        ['/yok/', 404],
+      ] as const) {
+        const res = await get(url);
+        expect(res.statusCode, url).toBe(status);
+        expect(res.body.match(/<h1\b/g), url).toHaveLength(1);
+        expect(res.body, url).toContain('/assets/');
+      }
+    } finally {
+      await db
+        .update(schema.sites)
+        .set({ activeThemeVersionId: null })
+        .where(eq(schema.sites.id, siteId));
     }
   });
 });

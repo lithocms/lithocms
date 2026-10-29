@@ -14,7 +14,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "db:generate": "pnpm -C packages/core db:generate",
-    "db:migrate": "pnpm -C packages/core db:migrate"
+    "db:migrate": "pnpm -C packages/core db:migrate",
+    "theme:check": "pnpm --filter @lithocms/server exec tsx --conditions=@lithocms/source src/validate-theme.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
