@@ -8,7 +8,7 @@ import { Pill } from '@/components/ui/pill';
 import { api, ApiError, useApi, type Issue } from '@/lib/api';
 import { useFormat, useI18n } from '@/lib/i18n';
 import { useSite } from '@/lib/session';
-import type { ClaudeConnections, McpScope, McpToken } from '@/lib/types';
+import type { ClaudeConnections, McpScope, McpToken, OAuthApp } from '@/lib/types';
 
 const EXPIRY = ['30', '90', '365', 'never'] as const;
 
@@ -43,7 +43,7 @@ function CopyBlock({ label, text }: { label: string; text: string }) {
   );
 }
 
-/** Personal access tokens that let Claude (or another MCP client) work on this site. */
+/** Connections that let Claude (or another MCP client) work on this site: tokens and apps. */
 export function ClaudePage() {
   const { t } = useI18n();
   const fmt = useFormat();
@@ -60,7 +60,7 @@ export function ClaudePage() {
 
   if (data.error) return <ErrorNote error={data.error} />;
   if (!data.data) return <Loading />;
-  const { grantable, tokens } = data.data;
+  const { url, grantable, tokens, apps } = data.data;
 
   const create = async () => {
     setBusy('create');
@@ -92,6 +92,20 @@ export function ClaudePage() {
     setBusy(token.id);
     try {
       await api(site.path(`/mcp-tokens/${token.id}`), { method: 'DELETE' });
+      setConfirm('');
+      data.reload();
+    } catch (err) {
+      setNote(err instanceof ApiError ? err.message : t('common.error'));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const disconnect = async (app: OAuthApp) => {
+    if (confirm !== app.id) return setConfirm(app.id);
+    setBusy(app.id);
+    try {
+      await api(site.path(`/oauth-apps/${app.id}`), { method: 'DELETE' });
       setConfirm('');
       data.reload();
     } catch (err) {
@@ -151,7 +165,7 @@ export function ClaudePage() {
                   <label key={scope} className="flex cursor-pointer items-start gap-2 text-sm">
                     <input
                       type="checkbox"
-                      className="mt-0.5 size-4 accent-ink"
+                      className="mt-0.5 size-4 shrink-0 accent-ink"
                       checked={scopes.includes(scope)}
                       onChange={(e) => toggle(scope, e.target.checked)}
                     />
@@ -237,6 +251,48 @@ export function ClaudePage() {
               ))}
             </ul>
           )}
+        </SettingsRow>
+        <SettingsRow title={t('claude.apps')} hint={t('claude.appsHint')}>
+          <div className="grid gap-4">
+            <CopyBlock label={t('claude.connectorUrl')} text={url} />
+            {apps.length === 0 ? (
+              <p className="text-sm text-muted">{t('claude.noApps')}</p>
+            ) : (
+              <ul className="grid gap-2">
+                {apps.map((app) => (
+                  <li
+                    key={app.id}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-card border border-border bg-sheet px-4 py-3"
+                  >
+                    <span className="min-w-0 font-medium break-words">
+                      {app.name ?? app.clientId}
+                    </span>
+                    <span className="flex gap-1">
+                      {app.scopes
+                        .filter((s): s is McpScope => s !== 'offline_access')
+                        .map((s) => (
+                          <Pill key={s}>{t(`claude.scope.${s}`)}</Pill>
+                        ))}
+                    </span>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      className="ml-auto"
+                      disabled={busy !== ''}
+                      onClick={() => void disconnect(app)}
+                    >
+                      {confirm === app.id ? t('claude.confirmDisconnect') : t('claude.disconnect')}
+                    </Button>
+                    {app.createdAt && (
+                      <span className="w-full text-[13px] text-muted">
+                        {t('claude.connectedAt', { d: fmt.date(app.createdAt) })}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </SettingsRow>
       </div>
     </>

@@ -216,4 +216,16 @@ export interface ClaudeConnections {
   /** Scopes the signed-in user's role can grant on this site. */
   grantable: McpScope[];
   tokens: McpToken[];
+  /** Apps connected over OAuth (Claude.ai, Claude Desktop). */
+  apps: OAuthApp[];
+}
+
+export interface OAuthApp {
+  id: string;
+  clientId: string;
+  name: string | null;
+  uri: string | null;
+  /** Granted scopes; may include `offline_access` besides the MCP scopes. */
+  scopes: string[];
+  createdAt: string | null;
 }

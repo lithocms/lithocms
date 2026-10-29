@@ -115,6 +115,8 @@ export const sessions = pgTable(
     expiresAt: timestamp({ withTimezone: true }).notNull(),
     ipAddress: text(),
     userAgent: text(),
+    /** The site picked on the OAuth site step; bound to the consent it leads to. */
+    oauthSiteId: uuid().references((): AnyPgColumn => sites.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -185,6 +187,182 @@ export const passkeys = pgTable(
   },
   (t) => [index().on(t.userId), uniqueIndex().on(t.credentialID)],
 );
+
+// OAuth 2.1 provider for MCP clients such as Claude.ai (better-auth jwt + mcp + cimd plugins).
+// `reference_id` on consents and tokens is the site the user chose for that grant.
+
+const ts = () => timestamp({ withTimezone: true });
+
+export const jwks = pgTable('jwks', {
+  id: id(),
+  publicKey: text().notNull(),
+  privateKey: text().notNull(),
+  createdAt: ts().notNull(),
+  expiresAt: ts(),
+  alg: text(),
+  crv: text(),
+});
+
+export const oauthClients = pgTable(
+  'oauth_clients',
+  {
+    id: id(),
+    clientId: text().notNull().unique(),
+    clientSecret: text(),
+    clientDiscoveryId: text(),
+    disabled: boolean().default(false),
+    skipConsent: boolean(),
+    enableEndSession: boolean(),
+    subjectType: text(),
+    scopes: text().array(),
+    clientCredentialsScopes: text().array(),
+    userId: uuid().references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: ts(),
+    updatedAt: ts(),
+    name: text(),
+    uri: text(),
+    icon: text(),
+    contacts: text().array(),
+    tos: text(),
+    policy: text(),
+    softwareId: text(),
+    softwareVersion: text(),
+    softwareStatement: text(),
+    redirectUris: text().array().notNull(),
+    postLogoutRedirectUris: text().array(),
+    backchannelLogoutUri: text(),
+    backchannelLogoutSessionRequired: boolean(),
+    tokenEndpointAuthMethod: text(),
+    applicationType: text(),
+    jwks: text(),
+    jwksUri: text(),
+    grantTypes: text().array(),
+    responseTypes: text().array(),
+    requirePKCE: boolean('require_pkce'),
+    dpopBoundAccessTokens: boolean().default(false),
+    referenceId: text(),
+    metadata: jsonb(),
+  },
+  (t) => [index().on(t.userId)],
+);
+
+export const oauthResources = pgTable('oauth_resources', {
+  id: id(),
+  identifier: text().notNull().unique(),
+  name: text().notNull(),
+  accessTokenTtl: integer(),
+  refreshTokenTtl: integer(),
+  signingAlgorithm: text(),
+  signingKeyId: text(),
+  allowedScopes: text().array(),
+  customClaims: jsonb(),
+  dpopBoundAccessTokensRequired: boolean().default(false),
+  disabled: boolean().default(false),
+  createdAt: ts(),
+  updatedAt: ts(),
+  policyVersion: integer(),
+  metadata: jsonb(),
+});
+
+const oauthClientRef = () =>
+  text()
+    .notNull()
+    .references(() => oauthClients.clientId, { onDelete: 'cascade' });
+const sessionRef = () => uuid().references(() => sessions.id, { onDelete: 'set null' });
+
+export const oauthClientResources = pgTable(
+  'oauth_client_resources',
+  {
+    id: id(),
+    clientId: oauthClientRef(),
+    resourceId: text()
+      .notNull()
+      .references(() => oauthResources.identifier, { onDelete: 'cascade' }),
+    metadata: jsonb(),
+    createdAt: ts(),
+  },
+  (t) => [index().on(t.clientId), index().on(t.resourceId)],
+);
+
+export const oauthRefreshTokens = pgTable(
+  'oauth_refresh_tokens',
+  {
+    id: id(),
+    token: text().notNull().unique(),
+    clientId: oauthClientRef(),
+    sessionId: sessionRef(),
+    userId: userRef(),
+    referenceId: text(),
+    authorizationCodeId: text(),
+    resources: text().array(),
+    requestedUserInfoClaims: text().array(),
+    expiresAt: ts(),
+    createdAt: ts(),
+    revoked: ts(),
+    rotatedAt: ts(),
+    rotationReplayResponse: text(),
+    rotationReplayExpiresAt: ts(),
+    authTime: ts(),
+    confirmation: jsonb(),
+    scopes: text().array().notNull(),
+  },
+  (t) => [
+    index().on(t.clientId),
+    index().on(t.sessionId),
+    index().on(t.userId),
+    index().on(t.authorizationCodeId),
+  ],
+);
+
+export const oauthAccessTokens = pgTable(
+  'oauth_access_tokens',
+  {
+    id: id(),
+    token: text().unique(),
+    clientId: oauthClientRef(),
+    sessionId: sessionRef(),
+    userId: uuid().references(() => users.id, { onDelete: 'cascade' }),
+    referenceId: text(),
+    authorizationCodeId: text(),
+    resources: text().array(),
+    requestedUserInfoClaims: text().array(),
+    refreshId: uuid().references(() => oauthRefreshTokens.id, { onDelete: 'cascade' }),
+    expiresAt: ts(),
+    createdAt: ts(),
+    revoked: ts(),
+    confirmation: jsonb(),
+    scopes: text().array().notNull(),
+  },
+  (t) => [
+    index().on(t.clientId),
+    index().on(t.sessionId),
+    index().on(t.userId),
+    index().on(t.authorizationCodeId),
+    index().on(t.refreshId),
+  ],
+);
+
+export const oauthConsents = pgTable(
+  'oauth_consents',
+  {
+    id: id(),
+    clientId: oauthClientRef(),
+    userId: uuid().references(() => users.id, { onDelete: 'cascade' }),
+    referenceId: text(),
+    resources: text().array(),
+    requestedUserInfoClaims: text().array(),
+    scopes: text().array().notNull(),
+    createdAt: ts(),
+    updatedAt: ts(),
+  },
+  (t) => [index().on(t.clientId), index().on(t.userId, t.referenceId)],
+);
+
+/** Used client-assertion `jti`s (replay protection); the id is the jti, not a uuid. */
+export const oauthClientAssertions = pgTable('oauth_client_assertions', {
+  id: text().primaryKey(),
+  expiresAt: ts().notNull(),
+});
 
 export const ROLES = ['owner', 'admin', 'editor', 'author'] as const;
 export type Role = (typeof ROLES)[number];

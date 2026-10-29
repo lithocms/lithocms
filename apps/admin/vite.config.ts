@@ -6,10 +6,11 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
-  // Dev only: the dev compose stack proxies admin.localhost to this server and /api/* to the app.
+  // Dev only: the dev compose stack proxies localhost (the admin origin) to this server and
+  // /api/*, /mcp and /.well-known/* to the app.
   server: {
     host: true,
-    allowedHosts: ['admin.localhost'],
+    allowedHosts: ['localhost'],
     hmr: { clientPort: 8080 },
   },
 });

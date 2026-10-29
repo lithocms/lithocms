@@ -27,5 +27,6 @@ export * from './public/feeds.js';
 export * from './public/cache.js';
 export * from './themes/settings.js';
 export * from './themes/library.js';
+export * from './mcp/oauth-apps.js';
 export * from './mcp/tokens.js';
 export * from './content/site.js';

@@ -1,5 +1,5 @@
 # Local development stack: `pnpm dev`, then open http://site.localhost:8080 and
-# http://admin.localhost:8080 (admin@example.com / lithocms-dev). Sources are mounted; the server
+# http://localhost:8080 (admin, admin@example.com / lithocms-dev). Sources are mounted; the server
 # restarts and the admin reloads on change.
 # Outgoing mail is caught by Mailpit: http://localhost:8025.
 # Checks and other tooling run in a throwaway container, nothing is installed on the host:
@@ -47,7 +47,8 @@ services:
     environment:
       DATABASE_URL: postgres://lithocms_app:app@postgres:5432/lithocms
       DATABASE_OWNER_URL: postgres://lithocms_owner:owner@postgres:5432/lithocms
-      ADMIN_URL: http://admin.localhost:8080
+      # Loopback, so OAuth (MCP connectors) works without TLS in dev.
+      ADMIN_URL: http://localhost:8080
       AUTH_SECRET: dev-only-secret-dev-only-secret-dev-only
       DEV_SITE_DOMAIN: site.localhost
       MEDIA_DIR: /src/.dev-media
