@@ -16,6 +16,8 @@ const Config = z.object({
   MEDIA_DIR: z.string().default('/data/media'),
   /** Rendered pages; a volume in production. Empty turns the page cache off. */
   CACHE_DIR: z.string().default('/data/cache'),
+  /** The built admin SPA (apps/admin/dist). */
+  ADMIN_DIR: z.string().default('/app/admin'),
   /** Bundled themes, one folder per theme. */
   THEMES_DIR: z.string().default('/app/themes'),
   /** Bundled theme(s) for sites without an active theme, in order of preference. */

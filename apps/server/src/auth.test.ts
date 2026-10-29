@@ -95,7 +95,7 @@ describe('auth', () => {
         isInstanceOwner: false,
         twoFactorEnabled: false,
       },
-      sites: [{ id: siteId, name: 'Example', role: 'editor' }],
+      sites: [{ id: siteId, name: 'Example', role: 'editor', url: 'https://example.com' }],
     });
   });
 

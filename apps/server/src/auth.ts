@@ -4,7 +4,7 @@ import { hash, verify } from '@node-rs/argon2';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { twoFactor } from 'better-auth/plugins';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { clientIp } from './client-ip.js';
 
@@ -124,7 +124,10 @@ function toHeaders(request: FastifyRequest): Headers {
 }
 
 /** better-auth endpoints and the admin SPA's session bootstrap. Admin origin only. */
-export function registerAuthRoutes(app: FastifyInstance, { auth, db }: { auth: Auth; db: Db }) {
+export function registerAuthRoutes(
+  app: FastifyInstance,
+  { auth, db, adminUrl }: { auth: Auth; db: Db; adminUrl: URL },
+) {
   app.route({
     method: ['GET', 'POST'],
     url: '/api/auth/*',
@@ -154,12 +157,27 @@ export function registerAuthRoutes(app: FastifyInstance, { auth, db }: { auth: A
     const user = await getSessionUser(auth, request);
     if (!user) return reply.code(401).send({ error: 'unauthorized' });
     const { id, name, email, isInstanceOwner, twoFactorEnabled } = user;
-    const sites = await db
-      .select({ id: schema.sites.id, name: schema.sites.name, role: schema.memberships.role })
+    const rows = await db
+      .select({
+        id: schema.sites.id,
+        name: schema.sites.name,
+        role: schema.memberships.role,
+        domain: schema.siteDomains.domain,
+      })
       .from(schema.memberships)
       .innerJoin(schema.sites, eq(schema.sites.id, schema.memberships.siteId))
+      .leftJoin(
+        schema.siteDomains,
+        and(eq(schema.siteDomains.siteId, schema.sites.id), eq(schema.siteDomains.isPrimary, true)),
+      )
       .where(eq(schema.memberships.userId, id))
       .orderBy(schema.sites.name);
+    // Public origin of each site, on the admin origin's scheme and port (media previews, "view site").
+    const port = adminUrl.port ? `:${adminUrl.port}` : '';
+    const sites = rows.map(({ domain, ...site }) => ({
+      ...site,
+      url: domain ? `${adminUrl.protocol}//${domain}${port}` : null,
+    }));
     return { user: { id, name, email, isInstanceOwner, twoFactorEnabled }, sites };
   });
 }

@@ -1,5 +1,6 @@
 import type { Db, MediaStore } from '@lithocms/core';
 import { sql } from 'drizzle-orm';
+import type { AdminApp } from './admin-app.js';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { registerApi } from './api.js';
@@ -34,6 +35,8 @@ export interface AppOptions {
   jobs?: Jobs;
   /** Rendered pages; without it every request renders. */
   cache?: PageCache;
+  /** The built admin SPA; without it the admin origin serves the API only. */
+  admin?: AdminApp;
   logLevel?: string;
 }
 
@@ -52,6 +55,7 @@ export function buildApp({
   themes,
   jobs,
   cache,
+  admin,
   logLevel = 'info',
 }: AppOptions): FastifyInstance {
   const app = Fastify({
@@ -70,6 +74,9 @@ export function buildApp({
       const write = !SAFE_METHODS.has(request.method) && request.url.startsWith('/api/');
       if (write && request.headers.origin !== adminUrl.origin) {
         return reply.code(403).send({ error: 'forbidden_origin' });
+      }
+      if (admin && SAFE_METHODS.has(request.method) && !request.url.startsWith('/api/')) {
+        return admin.serve(request, reply);
       }
       return;
     }
@@ -101,10 +108,9 @@ export function buildApp({
     }
   });
 
-  registerAuthRoutes(app, { auth, db });
+  registerAuthRoutes(app, { auth, db, adminUrl });
   registerApi(app, { db, auth, secret, store, themes });
   registerMediaFiles(app, store);
-  // TODO(phase-1): the admin SPA on the admin origin.
   registerPublic(app, { db, themes, adminUrl, secret, jobs, cache });
 
   return app;
