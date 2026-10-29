@@ -213,6 +213,10 @@ const en = {
   'oauth.consentHint':
     'It acts as you, within what you allow here, and never beyond your role. You can disconnect it at any time under Claude connections.',
   'oauth.notGrantable': 'Your role on this site cannot grant this.',
+  'oauth.identifiedBy': 'Identified by {host}.',
+  'oauth.unverified':
+    'This app named itself; LithoCMS cannot verify the name. Allow only if you started connecting from {host}.',
+  'oauth.returnTo': 'After you decide, you go back to {host}.',
   'oauth.allow': 'Allow',
   'oauth.deny': 'Deny',
   'oauth.expired':
@@ -458,6 +462,10 @@ const tr: Record<Key, string> = {
   'oauth.consentHint':
     'Burada izin verdiğiniz kadarıyla, sizin adınıza çalışır; rolünüzün ötesine asla geçemez. Bağlantısını istediğiniz zaman Claude bağlantıları sayfasından kesebilirsiniz.',
   'oauth.notGrantable': 'Bu sitedeki rolünüz bu izni veremez.',
+  'oauth.identifiedBy': 'Kimliğini {host} doğruluyor.',
+  'oauth.unverified':
+    'Bu uygulama adını kendisi bildirdi; LithoCMS bu adı doğrulayamaz. Yalnızca bağlantıyı {host} üzerinden başlattıysanız izin verin.',
+  'oauth.returnTo': 'Kararınızdan sonra {host} adresine dönersiniz.',
   'oauth.allow': 'İzin ver',
   'oauth.deny': 'Reddet',
   'oauth.expired':
