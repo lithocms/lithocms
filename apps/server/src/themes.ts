@@ -6,10 +6,11 @@ import {
   type ThemeBundle,
   type ThemeFiles,
 } from '@lithocms/theme-engine';
-import { createHash } from 'node:crypto';
-import { readdir, readFile } from 'node:fs/promises';
-import { join, relative, sep } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import type { FastifyBaseLogger } from 'fastify';
+import { TEXT_FILE } from './theme-zip.js';
 
 export interface ThemeAsset {
   data: Buffer;
@@ -26,10 +27,17 @@ export interface LoadedTheme extends Omit<PublicTheme, 'themeId'> {
 export interface ThemeSet {
   /** Bundled slugs to fall back to, in order, when a site has no active theme. */
   defaults: string[];
-  get(storagePath: string): LoadedTheme | undefined;
+  get(storagePath: string): Promise<LoadedTheme | undefined>;
+  /** The files of a version (bundled or uploaded). */
+  files(storagePath: string): Promise<ThemeBundle | undefined>;
+  /** Stores a validated uploaded bundle for a site; returns its storage path. */
+  save(siteId: string, bundle: ThemeBundle): Promise<string>;
+  /** Removes an uploaded version's files (after its row is gone or replaced). */
+  remove(storagePath: string): Promise<void>;
 }
 
-const TEXT = /\.(liquid|json|css|js|svg)$/;
+// Uploaded versions loaded from disk stay in memory; this many at most.
+const LOADED_UPLOADS = 50;
 
 /** Builds a renderable theme from its files (the bundle must already be valid). */
 export function loadTheme(bundle: ThemeBundle): LoadedTheme {
@@ -54,14 +62,17 @@ export function loadTheme(bundle: ThemeBundle): LoadedTheme {
 /**
  * Reads, validates and registers the themes shipped in `dir` (one folder per theme). Invalid
  * themes are recorded as such and skipped. Uses the owner role: bundled rows have no site.
+ * Themes uploaded for a site are read from `storeDir` when first used.
  */
 export async function loadBundledThemes(
   dir: string,
   ownerDb: Db,
   defaults: string[],
   log: FastifyBaseLogger,
+  storeDir: string,
 ): Promise<ThemeSet> {
   const loaded = new Map<string, LoadedTheme>();
+  const bundles = new Map<string, ThemeBundle>();
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
   for (const entry of entries.filter((e) => e.isDirectory())) {
     const bundle = await readBundle(join(dir, entry.name));
@@ -84,19 +95,70 @@ export async function loadBundledThemes(
       continue;
     }
     loaded.set(version.storagePath, loadTheme(bundle));
+    bundles.set(version.storagePath, bundle);
   }
   log.info({ themes: [...loaded.keys()] }, 'bundled themes loaded');
-  return { defaults, get: (path) => loaded.get(path) };
+  return { defaults, ...uploadedThemes(storeDir, loaded, bundles) };
 }
 
-async function readBundle(root: string): Promise<ThemeBundle> {
+/** Uploaded versions live under `storeDir` as `sites/<siteId>/<random>/`. */
+function uploadedThemes(
+  storeDir: string,
+  bundled: Map<string, LoadedTheme>,
+  bundledFiles: Map<string, ThemeBundle>,
+): Omit<ThemeSet, 'defaults'> {
+  const root = resolve(storeDir);
+  const uploads = new Map<string, LoadedTheme>();
+  const dirOf = (storagePath: string) => {
+    const dir = resolve(root, storagePath);
+    if (!storagePath.startsWith('sites/') || !dir.startsWith(root + sep)) return undefined;
+    return dir;
+  };
+  const files = async (storagePath: string) => {
+    const bundle = bundledFiles.get(storagePath);
+    if (bundle) return bundle;
+    const dir = dirOf(storagePath);
+    return dir ? readBundle(dir).catch(() => undefined) : undefined;
+  };
+  return {
+    files,
+    get: async (storagePath) => {
+      const theme = bundled.get(storagePath) ?? uploads.get(storagePath);
+      if (theme) return theme;
+      const bundle = await files(storagePath);
+      if (!bundle) return undefined;
+      const loaded = loadTheme(bundle);
+      if (uploads.size >= LOADED_UPLOADS) uploads.delete(uploads.keys().next().value!);
+      uploads.set(storagePath, loaded);
+      return loaded;
+    },
+    save: async (siteId, bundle) => {
+      const storagePath = `sites/${siteId}/${randomUUID()}`;
+      const dir = dirOf(storagePath)!;
+      for (const [path, content] of Object.entries(bundle)) {
+        const target = resolve(dir, path);
+        if (!target.startsWith(dir + sep)) throw new Error(`Unsafe theme path: ${path}`);
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, content);
+      }
+      return storagePath;
+    },
+    remove: async (storagePath) => {
+      uploads.delete(storagePath);
+      const dir = dirOf(storagePath);
+      if (dir) await rm(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+export async function readBundle(root: string): Promise<ThemeBundle> {
   const bundle: ThemeBundle = {};
   const entries = await readdir(root, { withFileTypes: true, recursive: true });
   for (const entry of entries.filter((e) => e.isFile())) {
     const full = join(entry.parentPath, entry.name);
     const path = relative(root, full).split(sep).join('/');
     const data = await readFile(full);
-    bundle[path] = TEXT.test(path) ? data.toString('utf8') : new Uint8Array(data);
+    bundle[path] = TEXT_FILE.test(path) ? data.toString('utf8') : new Uint8Array(data);
   }
   return bundle;
 }

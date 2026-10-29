@@ -1,0 +1,2 @@
+ALTER TABLE "sites" ADD COLUMN "previous_theme_version_id" uuid;--> statement-breakpoint
+ALTER TABLE "sites" ADD CONSTRAINT "sites_previous_theme_version_id_theme_versions_id_fk" FOREIGN KEY ("previous_theme_version_id") REFERENCES "public"."theme_versions"("id") ON DELETE set null ON UPDATE no action;

@@ -36,7 +36,10 @@ export function purgeTagsFor(entry: {
       return ['collections'];
     case 'form':
       return ['forms'];
+    // Uploading or deleting a theme the site does not use changes no page (activation does).
     case 'form_submission':
+    case 'theme_version':
+    case 'theme_package':
       return [];
     case 'media':
       return entry.action === 'media.upload' ? [] : 'all';

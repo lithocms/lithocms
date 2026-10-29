@@ -167,8 +167,13 @@ describe('validateTheme', () => {
       ['assets/movie.mp4', new Uint8Array(1)],
       ['server.js', 'x'],
       ['assets/../theme.json', '{}'],
+      ['docs/README.md', 'x'],
     ])('rejects %s', async (path, content) => {
       expect(await rules({ [path]: content })).toContain('file-types');
+    });
+
+    it.each(['README.md', 'LICENSE', 'LICENSE.txt'])('accepts %s at the root', async (path) => {
+      expect(await rules({ [path]: 'x' })).toEqual([]);
     });
   });
 

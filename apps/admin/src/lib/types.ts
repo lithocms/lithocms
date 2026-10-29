@@ -115,6 +115,31 @@ export interface Theme {
   collections: string[];
 }
 
+export interface ThemeIssue {
+  path: string;
+  line?: number;
+  rule: string;
+  message: string;
+}
+
+export interface ThemeReport {
+  valid: boolean;
+  errors: ThemeIssue[];
+  warnings: ThemeIssue[];
+}
+
+export interface ThemeLibrary {
+  themes: {
+    id: string;
+    slug: string;
+    name: string;
+    origin: 'bundled' | 'upload' | 'mcp' | 'git';
+    versions: { id: string; version: string; status: string; createdAt: string }[];
+  }[];
+  activeVersionId: string | null;
+  previousVersionId: string | null;
+}
+
 export interface FieldDef {
   key: string;
   label: Label;

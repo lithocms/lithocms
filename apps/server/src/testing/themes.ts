@@ -22,9 +22,18 @@ export const TEST_THEME: Record<string, string> = {
   'assets/style.css': 'body { margin: 0 }',
 };
 
-export const NO_THEMES: ThemeSet = { defaults: [], get: () => undefined };
+export const NO_THEMES: ThemeSet = {
+  defaults: [],
+  get: () => Promise.resolve(undefined),
+  files: () => Promise.resolve(undefined),
+  save: () => Promise.reject(new Error('no theme store')),
+  remove: () => Promise.resolve(),
+};
 
-/** Writes `TEST_THEME` (plus `extra` themes) to a folder and loads it like a real install. */
+/**
+ * Writes `TEST_THEME` (plus `extra` themes) to a folder and loads it like a real install;
+ * uploads go to a temporary store.
+ */
 export async function testThemes(
   ownerDb: Db,
   extra: Record<string, Record<string, string>> = {},
@@ -37,7 +46,8 @@ export async function testThemes(
       await writeFile(full, content);
     }
   }
-  const themes = await loadBundledThemes(dir, ownerDb, ['test'], pino({ level: 'silent' }));
+  const store = await mkdtemp(join(tmpdir(), 'litho-theme-store-'));
+  const themes = await loadBundledThemes(dir, ownerDb, ['test'], pino({ level: 'silent' }), store);
   await rm(dir, { recursive: true, force: true });
   return themes;
 }

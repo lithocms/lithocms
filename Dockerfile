@@ -23,8 +23,8 @@ COPY --from=build /out .
 COPY --from=build /src/themes ./themes
 COPY --from=build /src/apps/admin/dist ./admin
 COPY --from=build /src/licenses ./licenses
-# Mount the media and cache volumes here.
-RUN mkdir -p /data/media /data/cache && chown node:node /data/media /data/cache
+# Mount the media, cache and theme volumes here.
+RUN mkdir -p /data/media /data/cache /data/themes && chown node:node /data/media /data/cache /data/themes
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s \

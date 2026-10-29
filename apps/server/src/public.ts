@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import {
+  getThemeVersion,
   loadPublicSite,
   NotFound,
   renderPublic,
@@ -20,6 +21,7 @@ import { ipHash } from './client-ip.js';
 import type { Jobs } from './jobs.js';
 import type { PageCache } from './page-cache.js';
 import { normalizeHost, type ResolvedSite } from './sites.js';
+import { PREVIEW_COOKIE, previewOf, readPreviewToken, withPreviewBar } from './theme-preview.js';
 import type { LoadedTheme, ThemeSet } from './themes.js';
 
 const ASSET_TYPES: Record<string, string> = {
@@ -79,16 +81,53 @@ export function registerPublic(
   const originOf = (site: ResolvedSite) =>
     `${adminUrl.protocol}//${site.primaryDomain}${adminUrl.port ? `:${adminUrl.port}` : ''}`;
 
-  const themeFor = (siteId: string): Promise<(LoadedTheme & PublicTheme) | undefined> =>
-    withSite(db, siteId, async (tx) => {
-      const version = await siteThemeVersion(tx, siteId, themes.defaults);
-      const loaded = version && themes.get(version.storagePath);
-      return loaded && { ...loaded, themeId: version.themeId };
+  /** The site's live theme, or the version a valid preview cookie asks for. */
+  const themeFor = (
+    request: FastifyRequest,
+    site: ResolvedSite,
+  ): Promise<(LoadedTheme & PublicTheme & { preview?: string }) | undefined> =>
+    withSite(db, site.id, async (tx) => {
+      const preview = previewOf(request, secret, site.id);
+      const previewed =
+        preview && (await getThemeVersion(tx, site.id, preview.versionId).catch(() => undefined));
+      // A version deleted or broken since the link was made falls back to the live theme.
+      const usable =
+        previewed && (previewed.status === 'valid' || previewed.status === 'active')
+          ? previewed
+          : undefined;
+      const version = usable ?? (await siteThemeVersion(tx, site.id, themes.defaults));
+      const loaded = version && (await themes.get(version.storagePath));
+      return (
+        loaded && {
+          ...loaded,
+          themeId: version.themeId,
+          ...(usable ? { preview: `${loaded.manifest.name} ${usable.version}` } : {}),
+        }
+      );
     });
+
+  // `?token=` from the admin starts a preview of a theme version; `?exit=1` ends it.
+  app.get('/_preview', (request, reply) => {
+    const site = request.site;
+    if (!site) return reply.code(404).send({ error: 'not_found' });
+    const { token, exit } = request.query as { token?: string; exit?: string };
+    const secure = adminUrl.protocol === 'https:' ? '; Secure' : '';
+    const cookie = (value: string, maxAge: number) =>
+      `${PREVIEW_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+    if (exit) return reply.header('set-cookie', cookie('', 0)).redirect('/', 303);
+    const valid = token ? readPreviewToken(secret, site.id, token) : undefined;
+    if (!valid) {
+      return reply.code(400).type('text/plain').send('This preview link is invalid or expired.');
+    }
+    return reply
+      .header('set-cookie', cookie(token!, valid.seconds))
+      .header('cache-control', 'no-store')
+      .redirect('/', 303);
+  });
 
   app.get('/assets/:hash/*', async (request, reply) => {
     const { hash, '*': path } = request.params as { hash: string; '*': string };
-    const theme = request.site && (await themeFor(request.site.id));
+    const theme = request.site && (await themeFor(request, request.site));
     const asset = theme?.assets.get(path);
     const type = ASSET_TYPES[path.split('.').pop() ?? ''];
     if (!asset || asset.hash !== hash || !type) return reply.code(404).send({ error: 'not_found' });
@@ -109,14 +148,20 @@ export function registerPublic(
     }
     // Only plain URLs in canonical form are cached: queries carry search terms and form
     // results, and spelling variants of one page (case, escapes) must not each fill the disk.
-    const cacheable = cache && !query && !request.url.includes('?') && isCanonical(path);
+    // A theme preview is personal: never served from or stored in the cache.
+    const previewing = previewOf(request, secret, site.id) !== undefined;
+    const cacheable =
+      cache && !previewing && !query && !request.url.includes('?') && isCanonical(path);
     const send = (status: number, html: string, cached: 'hit' | 'miss' | 'off') => {
       // Rendered (and cached) with a placeholder; every response gets its own nonce.
       const nonce = randomBytes(16).toString('base64');
       return reply
         .code(status)
         .type('text/html; charset=utf-8')
-        .header('cache-control', 'public, max-age=0, must-revalidate')
+        .header(
+          'cache-control',
+          previewing ? 'private, no-store' : 'public, max-age=0, must-revalidate',
+        )
         .header('content-security-policy', contentSecurityPolicy(site.cspAllowlist, nonce))
         .header('x-content-type-options', 'nosniff')
         .header('referrer-policy', 'strict-origin-when-cross-origin')
@@ -125,7 +170,7 @@ export function registerPublic(
     };
     const hit = cacheable ? await cache.get(site.id, path) : undefined;
     if (hit !== undefined) return send(200, hit, 'hit');
-    const theme = await themeFor(site.id);
+    const theme = await themeFor(request, site);
     if (!theme) {
       request.log.error('no renderable theme for site');
       return reply.code(503).type('text/plain').send('This site has no theme yet.');
@@ -160,7 +205,8 @@ export function registerPublic(
         request.log.warn({ err }, 'page cache store failed');
       });
     }
-    return send(res.status, res.html, cacheable ? 'miss' : 'off');
+    const html = theme.preview ? withPreviewBar(res.html, site.locale, theme.preview) : res.html;
+    return send(res.status, html, cacheable ? 'miss' : 'off');
   };
 
   app.get('/', page);

@@ -99,6 +99,13 @@
       "when": 1793256846489,
       "tag": "0013_theme_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793274673315,
+      "tag": "0014_theme_rollback",
+      "breakpoints": true
     }
   ]
 }

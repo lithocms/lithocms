@@ -31,6 +31,8 @@ const REQUIRED = [
 const OPTIONAL_TEMPLATES = /^templates\/(tag|archive|page\.[a-z0-9_-]+)\.liquid$/;
 const LIQUID_PATH =
   /^(layouts\/base|templates\/[a-z0-9._-]+|sections\/[\w-]+|snippets\/[\w-]+)\.liquid$/;
+/** Notes for people and agents working on the theme; kept with it, never served. */
+const DOC_PATH = /^(README\.md|LICENSE(\.md|\.txt)?)$/;
 const ASSET_TYPES = [
   'css',
   'js',
@@ -86,6 +88,7 @@ export async function validateTheme(
       error('limits', path, 'Template is larger than 200 KB');
     if (
       path === 'theme.json' ||
+      DOC_PATH.test(path) ||
       LIQUID_PATH.test(path) ||
       /^locales\/[a-z]{2}(-[A-Z]{2})?\.json$/.test(path)
     )
