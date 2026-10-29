@@ -6,7 +6,8 @@ export default defineConfig({
   test: {
     include: ['{apps,packages}/*/src/**/*.test.ts'],
     passWithNoTests: true,
-    // Integration tests start a real Postgres container.
+    // Integration tests share one real Postgres container.
+    globalSetup: ['packages/core/src/testing/global-setup.ts'],
     hookTimeout: 120_000,
   },
 });

@@ -1,8 +1,17 @@
-import { PostgreSqlContainer } from '@testcontainers/postgresql';
-import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import pg from 'pg';
+import { inject } from 'vitest';
+
+declare module 'vitest' {
+  export interface ProvidedContext {
+    /** Superuser URL of the shared test Postgres, pointing at its `postgres` database. */
+    postgresAdminUrl: string;
+    /** Database prepared by init-roles.sh; copied for every test database. */
+    postgresTemplate: string;
+  }
+}
 
 export interface TestDatabase {
-  superuserUrl: string;
   /** Owner role: migrations and test fixtures. */
   ownerUrl: string;
   /** Runtime role: what the app uses. */
@@ -10,28 +19,39 @@ export interface TestDatabase {
   stop: () => Promise<void>;
 }
 
-/** Real Postgres with the same role setup as production (`deploy/postgres/init-roles.sh`). */
+/**
+ * A fresh database in the shared test Postgres (`global-setup.ts`), copied from the one
+ * init-roles.sh prepared, so schema ownership and default privileges match production.
+ */
 export async function startTestDatabase(): Promise<TestDatabase> {
-  const container = await new PostgreSqlContainer('postgres:18-alpine')
-    .withEnvironment({ LITHO_DB_OWNER_PASSWORD: 'owner', LITHO_DB_APP_PASSWORD: 'app' })
-    .withCopyFilesToContainer([
-      {
-        source: fileURLToPath(
-          new URL('../../../../deploy/postgres/init-roles.sh', import.meta.url),
-        ),
-        target: '/docker-entrypoint-initdb.d/10-init-roles.sh',
-        mode: 0o755,
-      },
-    ])
-    .start();
-  const url = (user: string, password: string) =>
-    `postgres://${user}:${password}@${container.getHost()}:${container.getPort()}/${container.getDatabase()}`;
+  const adminUrl = inject('postgresAdminUrl');
+  const name = `t_${randomUUID().replaceAll('-', '')}`;
+  const admin = new pg.Client({ connectionString: adminUrl });
+  await admin.connect();
+  try {
+    // Database-level settings are not copied from the template.
+    await admin.query(
+      `CREATE DATABASE ${name} TEMPLATE ${inject('postgresTemplate')} OWNER lithocms_owner`,
+    );
+    await admin.query(`REVOKE ALL ON DATABASE ${name} FROM PUBLIC`);
+    await admin.query(`GRANT CONNECT ON DATABASE ${name} TO lithocms_app`);
+  } finally {
+    await admin.end();
+  }
+  const url = (user: string, password: string) => {
+    const u = new URL(adminUrl);
+    u.username = user;
+    u.password = password;
+    u.pathname = `/${name}`;
+    return u.toString();
+  };
   return {
-    superuserUrl: container.getConnectionUri(),
     ownerUrl: url('lithocms_owner', 'owner'),
     appUrl: url('lithocms_app', 'app'),
     stop: async () => {
-      await container.stop();
+      const client = new pg.Client({ connectionString: adminUrl });
+      await client.connect();
+      await client.query(`DROP DATABASE ${name} WITH (FORCE)`).finally(() => client.end());
     },
   };
 }
