@@ -4,6 +4,7 @@ import { asc, desc, eq } from 'drizzle-orm';
 export interface ResolvedSite {
   id: string;
   name: string;
+  locale: string;
   status: 'active' | 'maintenance' | 'disabled';
   /** Canonical host; other domains of the site redirect to it. */
   primaryDomain: string;
@@ -27,6 +28,7 @@ export async function createSiteResolver(db: Db): Promise<SiteResolver> {
         isPrimary: schema.siteDomains.isPrimary,
         id: schema.sites.id,
         name: schema.sites.name,
+        locale: schema.sites.locale,
         status: schema.sites.status,
         settings: schema.sites.settings,
       })
@@ -41,6 +43,7 @@ export async function createSiteResolver(db: Db): Promise<SiteResolver> {
         {
           id: r.id,
           name: r.name,
+          locale: r.locale,
           status: r.status,
           primaryDomain: primary.get(r.id)!,
           cspAllowlist: hostList(r.settings.csp_allowlist),
@@ -62,7 +65,7 @@ export function normalizeHost(hostname: string): string {
 const HOST = /^(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 /** Only well-formed host names reach the CSP header. */
-function hostList(value: unknown): string[] {
+export function hostList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((h): h is string => typeof h === 'string' && HOST.test(h))
     : [];

@@ -3,7 +3,7 @@ import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig(
-  { ignores: ['**/dist/**', '**/coverage/**', '**/drizzle/**'] },
+  { ignores: ['**/dist/**', '**/coverage/**', '**/drizzle/**', '.dev-*/**'] },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
   {

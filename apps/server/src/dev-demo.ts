@@ -345,7 +345,7 @@ async function corporateTheme(
     .from(schema.themeVersions)
     .innerJoin(schema.themes, eq(schema.themes.id, schema.themeVersions.themeId))
     .where(and(isNull(schema.themes.siteId), eq(schema.themes.slug, 'corporate')));
-  const theme = version && themes.get(version.storagePath);
+  const theme = version && (await themes.get(version.storagePath));
   if (!theme) return;
   await updateThemeSettings(tx, siteId, actor, version.themeId, theme.manifest.settings ?? [], {
     cta_label: 'Seviye tespit sınavı',

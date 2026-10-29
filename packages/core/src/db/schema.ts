@@ -48,6 +48,10 @@ export const sites = pgTable('sites', {
   activeThemeVersionId: uuid().references((): AnyPgColumn => themeVersions.id, {
     onDelete: 'set null',
   }),
+  /** What `activeThemeVersionId` was before the last activation (theme rollback); null = default. */
+  previousThemeVersionId: uuid().references((): AnyPgColumn => themeVersions.id, {
+    onDelete: 'set null',
+  }),
   status: text({ enum: ['active', 'maintenance', 'disabled'] })
     .notNull()
     .default('active'),

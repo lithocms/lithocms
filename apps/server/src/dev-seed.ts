@@ -42,7 +42,13 @@ if (!userId) {
 // Sample content for the bundled theme, on a site without posts only.
 const owner = createDb(config.DATABASE_OWNER_URL, 1);
 const log = pino({ level: 'warn' });
-const themes = await loadBundledThemes(config.THEMES_DIR, owner.db, config.DEFAULT_THEME, log);
+const themes = await loadBundledThemes(
+  config.THEMES_DIR,
+  owner.db,
+  config.DEFAULT_THEME,
+  log,
+  config.THEME_STORE_DIR,
+);
 await owner.pool.end();
 await seedDemo(db, themes, createDiskStore(config.MEDIA_DIR), siteId, userId);
 await pool.end();

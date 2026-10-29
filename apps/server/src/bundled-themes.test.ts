@@ -38,6 +38,7 @@ beforeAll(async () => {
     owner.db,
     ['corporate'],
     pino({ level: 'silent' }),
+    await mkdtemp(join(tmpdir(), 'litho-theme-store-')),
   );
   const [site] = await owner.db.insert(schema.sites).values({ name: 'Demo' }).returning();
   await owner.db

@@ -109,7 +109,7 @@ export function buildApp({
   });
 
   registerAuthRoutes(app, { auth, db, adminUrl });
-  registerApi(app, { db, auth, secret, store, themes });
+  registerApi(app, { db, auth, secret, store, themes, adminUrl });
   registerMediaFiles(app, store);
   registerPublic(app, { db, themes, adminUrl, secret, jobs, cache });
 

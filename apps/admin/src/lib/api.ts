@@ -11,6 +11,8 @@ export class ApiError extends Error {
     readonly code: string,
     message: string,
     readonly issues: Issue[] = [],
+    /** The whole error response, for endpoints that send more than issues. */
+    readonly detail: unknown = undefined,
   ) {
     super(message);
   }
@@ -40,7 +42,7 @@ export async function api<T>(
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) {
     const e = data as { error?: string; message?: string; issues?: Issue[] };
-    throw new ApiError(res.status, e.error ?? 'error', e.message ?? res.statusText, e.issues);
+    throw new ApiError(res.status, e.error ?? 'error', e.message ?? res.statusText, e.issues, data);
   }
   return data as T;
 }

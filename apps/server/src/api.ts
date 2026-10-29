@@ -1,5 +1,13 @@
 import {
+  activateTheme,
   assertFormManager,
+  can,
+  deleteTheme,
+  Forbidden,
+  getThemeVersion,
+  listThemeLibrary,
+  recordUploadedTheme,
+  rollbackTheme,
   assertRedirectManager,
   CollectionCreateInput,
   CollectionKey,
@@ -82,7 +90,8 @@ import {
   type MediaStore,
   type Tx,
 } from '@lithocms/core';
-import { and, eq } from 'drizzle-orm';
+import { ThemeManifest, validateTheme } from '@lithocms/theme-engine';
+import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   hasZodFastifySchemaValidationErrors,
@@ -92,6 +101,9 @@ import {
 import { z } from 'zod';
 import { getSessionUser, type Auth } from './auth.js';
 import { ipHash } from './client-ip.js';
+import { hostList } from './sites.js';
+import { previewToken } from './theme-preview.js';
+import { readThemeZip, ThemeZipError, writeThemeZip } from './theme-zip.js';
 import type { ThemeSet } from './themes.js';
 
 declare module 'fastify' {
@@ -109,6 +121,8 @@ const STATUS: Record<DomainError['code'], number> = {
 };
 
 const Id = z.strictObject({ siteId: z.uuid(), id: z.uuid() });
+/** A theme is at most 10 MB unpacked (THEME_CONTRACT.md); its zip is smaller. */
+const MAX_THEME_ZIP_BYTES = 12 * 1024 * 1024;
 const Location = z.strictObject({ siteId: z.uuid(), location: MenuLocation });
 const Key = z.strictObject({ siteId: z.uuid(), key: SlotKey });
 const CollectionParams = z.strictObject({ siteId: z.uuid(), key: CollectionKey });
@@ -140,7 +154,15 @@ export function registerApi(
     secret,
     store,
     themes,
-  }: { db: Db; auth: Auth; secret: string; store: MediaStore; themes: ThemeSet },
+    adminUrl,
+  }: {
+    db: Db;
+    auth: Auth;
+    secret: string;
+    store: MediaStore;
+    themes: ThemeSet;
+    adminUrl: URL;
+  },
 ) {
   app.setValidatorCompiler(validatorCompiler);
   app.decorateRequest('actor', null);
@@ -413,7 +435,7 @@ export function registerApi(
       // theme: the active theme's customizer settings and static sections
       const activeTheme = async (tx: Tx, siteId: string) => {
         const version = await siteThemeVersion(tx, siteId, themes.defaults);
-        const loaded = version && themes.get(version.storagePath);
+        const loaded = version && (await themes.get(version.storagePath));
         if (!loaded) throw new NotFound('This site has no theme');
         return { themeId: version.themeId, version: version.version, ...loaded };
       };
@@ -472,6 +494,123 @@ export function registerApi(
           );
         }),
       );
+
+      // theme library: upload (zip body), preview, activate, roll back, download, delete
+      const assertThemes = (req: FastifyRequest) => {
+        if (!can(req.actor!.role, 'theme.manage')) {
+          throw new Forbidden('Only admins can manage themes');
+        }
+      };
+      /** The site's public origin and CSP allowlist. */
+      const publicSite = async (tx: Tx, siteId: string) => {
+        const [row] = await tx
+          .select({ settings: schema.sites.settings, domain: schema.siteDomains.domain })
+          .from(schema.sites)
+          .leftJoin(schema.siteDomains, eq(schema.siteDomains.siteId, schema.sites.id))
+          .where(eq(schema.sites.id, siteId))
+          .orderBy(desc(schema.siteDomains.isPrimary), schema.siteDomains.domain)
+          .limit(1);
+        const port = adminUrl.port ? `:${adminUrl.port}` : '';
+        return {
+          origin: row?.domain ? `${adminUrl.protocol}//${row.domain}${port}` : null,
+          cspAllowlist: hostList(row?.settings.csp_allowlist),
+        };
+      };
+      scope.addContentTypeParser(
+        ['application/zip', 'application/x-zip-compressed'],
+        { parseAs: 'buffer', bodyLimit: MAX_THEME_ZIP_BYTES },
+        (_req, body, done) => {
+          done(null, body);
+        },
+      );
+      api.get('/themes', (req) => run(req, (tx, siteId) => listThemeLibrary(tx, siteId)));
+      api.post('/themes', async (req, reply) => {
+        assertThemes(req);
+        if (!Buffer.isBuffer(req.body)) {
+          throw new ValidationFailed([
+            { path: ['file'], message: 'Send the zip as the request body' },
+          ]);
+        }
+        let bundle;
+        try {
+          bundle = await readThemeZip(req.body);
+        } catch (e) {
+          if (!(e instanceof ThemeZipError)) throw e;
+          throw new ValidationFailed([{ path: ['file'], message: e.message }]);
+        }
+        const { siteId } = req.actor!;
+        const { cspAllowlist } = await withSite(db, siteId, (tx) => publicSite(tx, siteId));
+        const report = await validateTheme(bundle, { cspAllowlist });
+        if (!report.valid) {
+          return reply
+            .code(422)
+            .send({ error: 'theme_invalid', message: 'The theme has errors', report });
+        }
+        const manifest = ThemeManifest.parse(JSON.parse(String(bundle['theme.json'])));
+        const storagePath = await themes.save(siteId, bundle);
+        const recorded = await run(req, (tx, siteId, actor) =>
+          recordUploadedTheme(tx, siteId, actor, {
+            slug: manifest.slug,
+            name: manifest.name,
+            version: manifest.version,
+            manifest,
+            report,
+            storagePath,
+          }),
+        ).catch(async (e: unknown) => {
+          await themes.remove(storagePath);
+          throw e;
+        });
+        if (recorded.replacedPath) await themes.remove(recorded.replacedPath);
+        return reply.code(201).send({
+          id: recorded.version.id,
+          slug: manifest.slug,
+          name: manifest.name,
+          version: manifest.version,
+          replaced: recorded.replacedPath !== null,
+          report,
+        });
+      });
+      api.post('/themes/versions/:id/activate', { schema: { params: Id } }, (req) =>
+        run(req, (tx, siteId, actor) => activateTheme(tx, siteId, actor, req.params.id)),
+      );
+      api.post('/themes/rollback', (req) =>
+        run(req, (tx, siteId, actor) => rollbackTheme(tx, siteId, actor)),
+      );
+      api.post('/themes/versions/:id/preview', { schema: { params: Id } }, (req) =>
+        run(req, async (tx, siteId) => {
+          assertThemes(req);
+          const version = await getThemeVersion(tx, siteId, req.params.id);
+          if (version.status !== 'valid' && version.status !== 'active') {
+            throw new ValidationFailed([
+              { path: ['id'], message: 'Only a valid theme can be previewed' },
+            ]);
+          }
+          const { origin } = await publicSite(tx, siteId);
+          if (!origin) throw new NotFound('This site has no domain yet');
+          const token = previewToken(secret, siteId, version.id);
+          return { url: `${origin}/_preview?token=${encodeURIComponent(token)}` };
+        }),
+      );
+      api.get('/themes/versions/:id/download', { schema: { params: Id } }, async (req, reply) => {
+        assertThemes(req);
+        const version = await run(req, (tx, siteId) => getThemeVersion(tx, siteId, req.params.id));
+        const files = await themes.files(version.storagePath);
+        if (!files) throw new NotFound('The theme files are missing');
+        const name = `${version.slug}-${version.version}`;
+        return reply
+          .type('application/zip')
+          .header('content-disposition', `attachment; filename="${name}.zip"`)
+          .header('cache-control', 'no-store')
+          .send(await writeThemeZip(files, version.slug));
+      });
+      api.delete('/themes/:id', { schema: { params: Id } }, async (req, reply) => {
+        const paths = await run(req, (tx, siteId, actor) =>
+          deleteTheme(tx, siteId, actor, req.params.id),
+        );
+        await Promise.all(paths.map((p) => themes.remove(p)));
+        return reply.code(204).send();
+      });
 
       // general settings (admins write)
       api.get('/settings', (req) => run(req, (tx, siteId) => getSiteSettings(tx, siteId)));

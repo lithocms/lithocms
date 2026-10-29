@@ -9,6 +9,7 @@ import {
 } from '@/components/settings-form';
 import { SaveBar, SettingsRow } from '@/components/settings-row';
 import { ErrorNote, Loading, PageHeader } from '@/components/shell';
+import { ThemeLibrary } from '@/components/theme-library';
 import { api, ApiError, useApi, type Issue } from '@/lib/api';
 import { useI18n, useLabel } from '@/lib/i18n';
 import { useSite } from '@/lib/session';
@@ -127,19 +128,28 @@ export function ThemePage() {
   const { t } = useI18n();
   const site = useSite();
   const theme = useApi<Theme>(site.path('/theme'));
-  if (theme.error) return <ErrorNote error={theme.error} />;
-  if (!theme.data) return <Loading />;
+  const live = theme.data ? `${theme.data.slug}@${theme.data.version}` : '';
   return (
     <>
       <PageHeader title={t('nav.theme')} />
       <div className="mx-auto max-w-[1152px] px-4 md:px-6">
-        <ThemeSettings theme={theme.data} />
-        {theme.data.sections.length > 0 && (
-          <SettingsRow title={t('theme.sections')}>
-            {theme.data.sections.map((s) => (
-              <StaticSection key={s.name} name={s.name} schema={s.schema} data={s.data} />
-            ))}
-          </SettingsRow>
+        <ThemeLibrary live={live} onChange={theme.reload} />
+        {theme.error ? (
+          <ErrorNote error={theme.error} />
+        ) : !theme.data ? (
+          <Loading />
+        ) : (
+          // Remounted when another theme goes live: its settings are its own.
+          <div key={live}>
+            <ThemeSettings theme={theme.data} />
+            {theme.data.sections.length > 0 && (
+              <SettingsRow title={t('theme.sections')}>
+                {theme.data.sections.map((s) => (
+                  <StaticSection key={s.name} name={s.name} schema={s.schema} data={s.data} />
+                ))}
+              </SettingsRow>
+            )}
+          </div>
         )}
       </div>
     </>

@@ -15,7 +15,13 @@ const config = loadConfig();
 await runMigrations(config.DATABASE_OWNER_URL);
 const log = pino({ level: config.LOG_LEVEL });
 const owner = createDb(config.DATABASE_OWNER_URL, 1);
-const themes = await loadBundledThemes(config.THEMES_DIR, owner.db, config.DEFAULT_THEME, log);
+const themes = await loadBundledThemes(
+  config.THEMES_DIR,
+  owner.db,
+  config.DEFAULT_THEME,
+  log,
+  config.THEME_STORE_DIR,
+);
 const appRole = decodeURIComponent(new URL(config.DATABASE_URL).username);
 await installJobs(config.DATABASE_OWNER_URL, owner.db, appRole);
 // Cached pages may point at assets of a theme version this release no longer ships.

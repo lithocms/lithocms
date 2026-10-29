@@ -20,6 +20,8 @@ const Config = z.object({
   ADMIN_DIR: z.string().default('/app/admin'),
   /** Bundled themes, one folder per theme. */
   THEMES_DIR: z.string().default('/app/themes'),
+  /** Themes uploaded for sites; a volume in production. */
+  THEME_STORE_DIR: z.string().default('/data/themes'),
   /** Bundled theme(s) for sites without an active theme, in order of preference. */
   DEFAULT_THEME: z
     .string()

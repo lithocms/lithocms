@@ -52,6 +52,7 @@ services:
       MEDIA_DIR: /src/.dev-media
       CACHE_DIR: /src/.dev-cache
       THEMES_DIR: /src/themes
+      THEME_STORE_DIR: /src/.dev-themes
       SMTP_URL: smtp://mailpit:1025
     volumes: *node-modules
     healthcheck:
@@ -89,6 +90,8 @@ services:
       - tools
     environment:
       TEST_POSTGRES_URL: postgres://postgres:postgres@test-postgres:5432/lithocms
+      # Same store for `pnpm add` as for the install above.
+      pnpm_config_store_dir: /pnpm-store
     volumes: *node-modules
     depends_on:
       test-postgres: { condition: service_healthy }
