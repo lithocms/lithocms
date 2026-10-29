@@ -1,5 +1,6 @@
 # Local development stack: `pnpm dev`, then open http://site.localhost:8080 and
-# http://admin.localhost:8080. Sources are mounted; the server restarts on change.
+# http://admin.localhost:8080 (admin@example.com / lithocms-dev). Sources are mounted; the server
+# restarts and the admin reloads on change.
 # Outgoing mail is caught by Mailpit: http://localhost:8025.
 name: lithocms-dev
 
@@ -12,6 +13,7 @@ x-node-modules: &node-modules
   - nm-content-format:/src/packages/content-format/node_modules
   - nm-theme-engine:/src/packages/theme-engine/node_modules
   - nm-server:/src/apps/server/node_modules
+  - nm-admin:/src/apps/admin/node_modules
 
 services:
   postgres:
@@ -49,9 +51,28 @@ services:
       THEMES_DIR: /src/themes
       SMTP_URL: smtp://mailpit:1025
     volumes: *node-modules
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/healthz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 3s
+      retries: 100
     depends_on:
       postgres: { condition: service_healthy }
       mailpit: { condition: service_started }
+
+  # The admin SPA with hot reload; the app container installs the dependencies first.
+  admin:
+    image: node:26-slim
+    working_dir: /src
+    command: sh -c "npm install -g --silent pnpm@12.16.1 && pnpm -C apps/admin dev"
+    volumes: *node-modules
+    depends_on:
+      app: { condition: service_healthy }
 
   mailpit:
     image: axllent/mailpit:v1.29
@@ -62,7 +83,7 @@ services:
     ports: ['127.0.0.1:8080:80']
     volumes:
       - ./deploy/dev/Caddyfile:/etc/caddy/Caddyfile:ro
-    depends_on: [app]
+    depends_on: [app, admin]
 
 volumes:
   pgdata:
@@ -72,3 +93,4 @@ volumes:
   nm-content-format:
   nm-theme-engine:
   nm-server:
+  nm-admin:

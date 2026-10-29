@@ -10,6 +10,7 @@ COPY packages/core/package.json packages/core/
 COPY packages/content-format/package.json packages/content-format/
 COPY packages/theme-engine/package.json packages/theme-engine/
 COPY apps/server/package.json apps/server/
+COPY apps/admin/package.json apps/admin/
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build && pnpm deploy --filter @lithocms/server --prod /out
@@ -20,6 +21,7 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /out .
 COPY --from=build /src/themes ./themes
+COPY --from=build /src/apps/admin/dist ./admin
 COPY --from=build /src/licenses ./licenses
 # Mount the media and cache volumes here.
 RUN mkdir -p /data/media /data/cache && chown node:node /data/media /data/cache
