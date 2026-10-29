@@ -3,7 +3,7 @@
   "slug": "starter",
   "version": "0.1.0",
   "author": "LithoCMS",
-  "license": "AGPL-3.0-only",
+  "license": "MIT",
   "engine": ">=0.1.0",
   "description": "A plain, complete theme to start your own from. Read README.md first.",
   "tokens": {

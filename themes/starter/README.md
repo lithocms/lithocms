@@ -15,7 +15,8 @@ sandbox: they cannot read files outside the theme, reach the network, the databa
 2. **Change it.** Edit the files yourself, or hand the folder to Claude with a brief (see
    [Working with Claude](#working-with-claude)).
 3. **Give it its own identity.** In `theme.json`, set a new `slug` (lowercase letters, digits,
-   hyphens), a `name`, and `version` `1.0.0`.
+   hyphens), a `name`, and `version` `1.0.0`. The starter is MIT-licensed (`LICENSE`), so your
+   theme may use any licence; set `license` and replace `LICENSE` to match.
 4. **Check it** (optional, the upload runs the same checks). With the LithoCMS image (published
    from the first release on):
    `docker run --rm -v "$PWD:/theme:ro" ghcr.io/lithocms/lithocms node dist/validate-theme.js /theme`
