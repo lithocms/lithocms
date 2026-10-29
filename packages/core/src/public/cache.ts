@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, lte, sql } from 'drizzle-orm';
+import { and, count, eq, gt, inArray, lte, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { pageCache, pageCacheTags, posts, sites } from '../db/schema.js';
 
@@ -8,6 +8,9 @@ import { pageCache, pageCacheTags, posts, sites } from '../db/schema.js';
 
 /** Entries are re-rendered at least this often (form tokens, safety net). */
 export const CACHE_MAX_AGE_MS = 24 * 3_600_000;
+
+/** Beyond this many entries a site's further pages render uncached (disk bound). */
+export const CACHE_MAX_ENTRIES = 20_000;
 
 export type PurgeTags = string[] | 'all';
 
@@ -124,6 +127,11 @@ export async function storeCached(
     .for('share');
   if (site?.v !== version) return undefined;
   await tx.delete(pageCache).where(and(eq(pageCache.siteId, siteId), eq(pageCache.path, path)));
+  const [{ n } = { n: 0 }] = await tx
+    .select({ n: count() })
+    .from(pageCache)
+    .where(eq(pageCache.siteId, siteId));
+  if (n >= CACHE_MAX_ENTRIES) return undefined;
   const [row] = await tx.insert(pageCache).values({ siteId, path }).returning({ id: pageCache.id });
   if (tags.length) {
     await tx

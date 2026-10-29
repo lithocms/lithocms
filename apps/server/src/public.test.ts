@@ -346,6 +346,14 @@ describe('page cache', () => {
     expect((await page('/cay-kahve/')).headers['x-litho-cache']).toBe('hit');
   });
 
+  it('caches only the canonical spelling of a URL', async () => {
+    for (const url of ['/CAY-KAHVE/', '/%63ay-kahve/', '/cay%2Dkahve/']) {
+      const res = await page(url);
+      expect(res.statusCode, url).toBe(200);
+      expect(res.headers['x-litho-cache'], url).toBe('off');
+    }
+  });
+
   it('never caches queries, redirects or errors', async () => {
     expect((await page('/?s=cay')).headers['x-litho-cache']).toBe('off');
     expect(
