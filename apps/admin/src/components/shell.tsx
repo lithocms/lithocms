@@ -12,6 +12,7 @@ import {
   Rows3,
   Settings,
   SquareMenu,
+  Tags,
   X,
 } from 'lucide-react';
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
@@ -58,6 +59,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
       <p className="mt-5 mb-1 px-2.5 text-xs text-muted">{t('nav.content')}</p>
       {item('/posts', <FileText />, t('nav.posts'))}
       {item('/pages', <Files />, t('nav.pages'))}
+      {site.atLeast('editor') && item('/terms', <Tags />, t('nav.terms'))}
       {item('/media', <Image />, t('nav.media'))}
       {item('/collections', <Rows3 />, t('nav.collections'))}
       {site.atLeast('admin') && item('/forms', <Inbox />, t('nav.forms'))}

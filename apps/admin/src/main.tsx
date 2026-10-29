@@ -25,6 +25,7 @@ const Forms = lazy(() => import('@/pages/forms').then((m) => ({ default: m.Forms
 const Collections = lazy(() =>
   import('@/pages/collections').then((m) => ({ default: m.Collections })),
 );
+const Terms = lazy(() => import('@/pages/terms').then((m) => ({ default: m.Terms })));
 const ClaudePage = lazy(() => import('@/pages/claude').then((m) => ({ default: m.ClaudePage })));
 
 function KnownSite({ children }: { children: React.ReactNode }) {
@@ -66,6 +67,7 @@ function App() {
             <Route path="posts" element={<PostList type="post" />} />
             <Route path="pages" element={<PostList type="page" />} />
             <Route path="posts/:postId" element={<PostEditor />} />
+            <Route path="terms/:taxonomy?" element={<Terms />} />
             <Route path="media" element={<MediaLibrary />} />
             <Route path="menus" element={<Menus />} />
             <Route path="collections/:key?" element={<Collections />} />

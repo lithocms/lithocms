@@ -66,6 +66,9 @@ export interface Term {
   name: string;
   slug: string;
   parentId: string | null;
+  /** Slugs from the root, `parent/child`. */
+  path: string;
+  description: string;
 }
 
 export interface MenuItem {

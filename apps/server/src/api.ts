@@ -22,6 +22,7 @@ import {
   createPost,
   createRedirect,
   createTerm,
+  deleteTerm,
   deleteEntry,
   deleteRedirect,
   FieldList,
@@ -315,6 +316,10 @@ export function registerApi(
       api.patch('/terms/:id', { schema: { params: Id, body: TermUpdateInput } }, (req) =>
         run(req, (tx, siteId, actor) => updateTerm(tx, siteId, actor, req.params.id, req.body)),
       );
+      api.delete('/terms/:id', { schema: { params: Id } }, async (req, reply) => {
+        await run(req, (tx, siteId, actor) => deleteTerm(tx, siteId, actor, req.params.id));
+        return reply.code(204).send();
+      });
 
       // menus, one per theme location
       api.get('/menus', (req) => run(req, (tx, siteId) => listMenus(tx, siteId)));
