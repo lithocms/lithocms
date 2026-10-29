@@ -28,6 +28,7 @@ import { NO_THEMES, TEST_THEME, testThemes } from './testing/themes.js';
 
 const adminUrl = new URL('https://admin.example.net');
 const secret = 'test-secret-test-secret-test-secret!';
+const notified: { siteId: string; submissionId: string }[] = [];
 
 let tdb: TestDatabase;
 let db: Db;
@@ -108,6 +109,13 @@ beforeAll(async () => {
     );
   });
   const options = {
+    jobs: {
+      notifyForm: (_tx: unknown, siteId: string, submissionId: string) => {
+        notified.push({ siteId, submissionId });
+        return Promise.resolve();
+      },
+      stop: () => Promise.resolve(),
+    },
     db,
     sites: await createSiteResolver(db),
     adminUrl,
@@ -218,6 +226,7 @@ describe('forms', () => {
     );
     const rows = await withSite(db, siteA, (tx) => tx.select().from(schema.formSubmissions));
     expect(rows.map((r) => r.data)).toEqual([{ email: 'a@b.co' }]);
+    expect(notified).toEqual([{ siteId: siteA, submissionId: rows[0]!.id }]);
     const back = await get('a.example', '/iletisim/?litho_form=contact&litho_status=sent');
     expect(back.body).toContain('role="status">Aldık!</p>');
   });
@@ -232,6 +241,7 @@ describe('forms', () => {
   it('answers bots like people', async () => {
     const res = await post({ email: 'a@b.co', _t: token(), _website: 'x' });
     expect(res.headers.location).toContain('litho_status=sent');
+    expect(notified).toHaveLength(1);
   });
 
   it('404s unknown forms and the admin origin', async () => {

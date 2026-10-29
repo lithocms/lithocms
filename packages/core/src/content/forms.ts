@@ -7,6 +7,7 @@ import {
   FORM_FIELD_TYPES,
   forms,
   formSubmissions,
+  sites,
   SUBMISSION_STATUSES,
   type FormField,
 } from '../db/schema.js';
@@ -213,9 +214,9 @@ export interface SubmitContext {
 }
 
 /**
- * Stores a public form post. Bot-like posts (honeypot filled, sent too fast, missing or old
- * token) are dropped and reported as `spam`, so the sender cannot tell them apart from
- * success.
+ * Stores a public form post and returns the submission id. Bot-like posts (honeypot filled,
+ * sent too fast, missing or old token) are dropped and give `null`, so the sender cannot tell
+ * them apart from success.
  */
 export async function submitForm(
   tx: Tx,
@@ -223,11 +224,11 @@ export async function submitForm(
   key: string,
   raw: Record<string, string>,
   ctx: SubmitContext,
-): Promise<'stored' | 'spam'> {
+): Promise<string | null> {
   const form = await getForm(tx, siteId, key);
   const now = ctx.now ?? Date.now();
   const age = tokenAge(ctx.secret, { siteId, key }, raw._t, now);
-  if (raw[HONEYPOT] || age === null || age < MIN_FILL_MS || age > MAX_TOKEN_AGE_MS) return 'spam';
+  if (raw[HONEYPOT] || age === null || age < MIN_FILL_MS || age > MAX_TOKEN_AGE_MS) return null;
 
   const data = parseSubmission(form, raw);
   // One check at a time per form and address, so parallel posts cannot slip past the limit.
@@ -247,10 +248,61 @@ export async function submitForm(
   if ((recent?.n ?? 0) >= RATE_LIMIT.count) {
     throw new ValidationFailed([{ path: [], message: 'Too many submissions; try again later' }]);
   }
-  await tx.insert(formSubmissions).values({ siteId, formId: form.id, data, ipHash: ctx.ipHash });
-  // TODO(phase-1): email `notifyEmails` through a pg-boss job.
-  return 'stored';
+  const [row] = await tx
+    .insert(formSubmissions)
+    .values({ siteId, formId: form.id, data, ipHash: ctx.ipHash })
+    .returning({ id: formSubmissions.id });
+  return row!.id;
 }
+
+export interface FormNotification {
+  to: string[];
+  subject: string;
+  text: string;
+  /** The sender's address when the form has an email field. */
+  replyTo?: string;
+}
+
+/** The email for a stored submission, or null when the form notifies no one. */
+export async function formNotification(
+  tx: Tx,
+  siteId: string,
+  submissionId: string,
+): Promise<FormNotification | null> {
+  const [row] = await tx
+    .select({ submission: formSubmissions, form: forms, site: sites })
+    .from(formSubmissions)
+    .innerJoin(forms, eq(forms.id, formSubmissions.formId))
+    .innerJoin(sites, eq(sites.id, formSubmissions.siteId))
+    .where(and(eq(formSubmissions.siteId, siteId), eq(formSubmissions.id, submissionId)));
+  if (!row?.form.notifyEmails.length) return null;
+  const { form, site, submission } = row;
+  const t = MAIL_STRINGS[site.locale === 'tr' ? 'tr' : 'en'];
+  const lines = form.fields.map((f) => {
+    const value = submission.data[f.key];
+    const shown =
+      value === undefined
+        ? '–'
+        : typeof value === 'boolean'
+          ? value
+            ? t.yes
+            : t.no
+          : String(value);
+    return `${label(f.label, site.locale) || f.key}: ${shown}`;
+  });
+  const email = form.fields.find((f) => f.type === 'email' && submission.data[f.key]);
+  return {
+    to: form.notifyEmails,
+    subject: `[${site.name}] ${t.subject} (${form.key})`.replace(/[\r\n]+/g, ' '),
+    text: [...lines, '', `${t.sent}: ${submission.createdAt.toISOString()}`].join('\n'),
+    replyTo: email ? String(submission.data[email.key]) : undefined,
+  };
+}
+
+const MAIL_STRINGS = {
+  tr: { subject: 'Yeni form gönderimi', sent: 'Gönderim', yes: 'Evet', no: 'Hayır' },
+  en: { subject: 'New form submission', sent: 'Sent', yes: 'Yes', no: 'No' },
+};
 
 function parseSubmission(form: Form, raw: Record<string, string>) {
   const data: Record<string, string | number | boolean> = {};

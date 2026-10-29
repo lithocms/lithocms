@@ -6,6 +6,7 @@ import { Forbidden, ValidationFailed } from '../errors.js';
 import { startTestDatabase, type TestDatabase } from '../testing/postgres.js';
 import type { Actor } from './audit.js';
 import {
+  formNotification,
   formToken,
   FormUpsertInput,
   getForm,
@@ -125,8 +126,8 @@ describe('submitForm', () => {
       _consent: '1',
       extra: 'ignored',
     });
-    expect(result).toBe('stored');
     const [row] = await stored();
+    expect(result).toBe(row!.id);
     expect(row!.data).toEqual({
       name: 'Ayşe',
       email: 'ayse@example.com',
@@ -140,6 +141,24 @@ describe('submitForm', () => {
     await expect(
       inSite((tx) => listSubmissions(tx, siteId, editor, 'contact', SubmissionListQuery.parse({}))),
     ).rejects.toBeInstanceOf(Forbidden);
+  });
+
+  it('builds a plain-text notification for the form recipients', async () => {
+    const id = await submit({
+      name: 'Ali\r\nBcc: x@evil.example',
+      email: 'ali@example.com',
+      newsletter: 'on',
+      _consent: '1',
+    });
+    const mail = await inSite((tx) => formNotification(tx, siteId, id!));
+    expect(mail).toMatchObject({
+      to: ['owner@example.com'],
+      subject: '[S] New form submission (contact)',
+      replyTo: 'ali@example.com',
+    });
+    expect(mail!.text).toContain('Name: Ali');
+    expect(mail!.text).toContain('Bülten: Yes');
+    expect(mail!.text).toContain('Konu: –');
   });
 
   it.each([
@@ -172,7 +191,7 @@ describe('submitForm', () => {
       _consent: '1',
       ...extra(),
     });
-    expect(result).toBe('spam');
+    expect(result).toBeNull();
     expect(await stored()).toHaveLength(before);
   });
 
@@ -183,6 +202,6 @@ describe('submitForm', () => {
       Array.from({ length: 8 }, () => submit(valid, 'ip-busy')),
     );
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(5);
-    expect(await submit(valid, 'ip-other')).toBe('stored');
+    expect(await submit(valid, 'ip-other')).toEqual(expect.any(String));
   });
 });

@@ -26,6 +26,10 @@ const Config = z.object({
         .map((s) => s.trim())
         .filter(Boolean),
     ),
+  /** Outgoing mail (form notifications), e.g. `smtps://user:pass@smtp.example.com:465`. */
+  SMTP_URL: z.url().optional(),
+  /** Sender address; defaults to `LithoCMS <noreply@admin host>`. */
+  MAIL_FROM: z.string().min(3).optional(),
 });
 
 export type Config = z.infer<typeof Config>;
