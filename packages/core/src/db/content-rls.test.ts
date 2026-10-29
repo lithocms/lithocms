@@ -103,6 +103,7 @@ describe('row-level security', () => {
       'revisions',
       'slots',
       'terms',
+      'theme_settings',
       'theme_versions',
       'themes',
     ]);

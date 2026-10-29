@@ -12,6 +12,7 @@ import {
   ValidationFailed,
   withSite,
   type Db,
+  type PublicTheme,
   type Tx,
 } from '@lithocms/core';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -78,10 +79,11 @@ export function registerPublic(
   const originOf = (site: ResolvedSite) =>
     `${adminUrl.protocol}//${site.primaryDomain}${adminUrl.port ? `:${adminUrl.port}` : ''}`;
 
-  const themeFor = (siteId: string): Promise<LoadedTheme | undefined> =>
+  const themeFor = (siteId: string): Promise<(LoadedTheme & PublicTheme) | undefined> =>
     withSite(db, siteId, async (tx) => {
       const version = await siteThemeVersion(tx, siteId, themes.defaults);
-      return version && themes.get(version.storagePath);
+      const loaded = version && themes.get(version.storagePath);
+      return loaded && { ...loaded, themeId: version.themeId };
     });
 
   app.get('/assets/:hash/*', async (request, reply) => {

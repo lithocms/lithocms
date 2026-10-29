@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { createThemeEngine, ThemeManifest } from '@lithocms/theme-engine';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -63,6 +64,7 @@ const files = {
   'templates/404.liquid': '<h1>Not here</h1>',
 };
 const theme: PublicTheme = {
+  themeId: randomUUID(),
   engine: createThemeEngine(files),
   manifest: ThemeManifest.parse(manifest),
   assetUrl: (path) => `/assets/abc/${path}`,

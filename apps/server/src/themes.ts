@@ -17,7 +17,7 @@ export interface ThemeAsset {
   hash: string;
 }
 
-export interface LoadedTheme extends PublicTheme {
+export interface LoadedTheme extends Omit<PublicTheme, 'themeId'> {
   /** Files under `assets/`, keyed by their path inside it. */
   assets: Map<string, ThemeAsset>;
 }

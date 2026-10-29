@@ -14,6 +14,7 @@ import {
   type ValueToken,
 } from 'liquidjs';
 import { escapeHtml, SafeHtml, safe, stripHtml } from './html.js';
+import { sectionSchema, type SectionSchema } from './manifest.js';
 
 /** Theme text files keyed by path inside the theme (`templates/post.liquid`, `theme.json`, ...). */
 export type ThemeFiles = Record<string, string>;
@@ -74,6 +75,8 @@ export interface ThemeEngine {
   render(request: RenderRequest): Promise<string>;
   /** Posts per page declared by `{% paginate … by N %}` in a template, if any. */
   pageSize(template: string): number | undefined;
+  /** Schemas of the theme's sections, by name (`sections/<name>.liquid`). */
+  sections: Record<string, SectionSchema>;
   /** @internal parsed file, cached */
   parse(path: string): Template[];
   has(path: string): boolean;
@@ -107,8 +110,16 @@ export function createThemeEngine(files: ThemeFiles): ThemeEngine {
   // `raw` would bypass escaping.
   delete liquid.filters.raw;
 
+  const sections: Record<string, SectionSchema> = {};
+  for (const [path, source] of Object.entries(files)) {
+    const name = /^sections\/([\w-]+)\.liquid$/.exec(path)?.[1];
+    const schema = name && sectionSchema(source);
+    if (name && schema) sections[name] = schema;
+  }
+
   const cache = new Map<string, Template[]>();
   const engine: ThemeEngine = {
+    sections,
     has: (path) => path in files,
     parse(path) {
       let parsed = cache.get(path);

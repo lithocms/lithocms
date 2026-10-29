@@ -750,3 +750,19 @@ export const themeVersions = pgTable(
     ...sharedOrTenant('theme_versions'),
   ],
 ).enableRLS();
+
+/** A site's values for a theme's `settings`; kept per theme so switching back restores them. */
+export const themeSettings = pgTable(
+  'theme_settings',
+  {
+    siteId: siteRef(),
+    themeId: uuid()
+      .notNull()
+      .references(() => themes.id, { onDelete: 'cascade' }),
+    values: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    /** Static sections (`{% section 'name' %}`), by name. */
+    sections: jsonb().$type<Record<string, Omit<SectionInstance, 'type'>>>().notNull().default({}),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.siteId, t.themeId] }), tenantPolicy('theme_settings')],
+).enableRLS();

@@ -32,6 +32,8 @@ import {
   listPosts,
   listRevisions,
   listTerms,
+  loadThemeSettings,
+  siteThemeVersion,
   MAX_UPLOAD_BYTES,
   MediaListQuery,
   MediaUpdateInput,
@@ -59,6 +61,8 @@ import {
   updateMedia,
   updateMenu,
   updateSlot,
+  updateThemeSection,
+  updateThemeSettings,
   updateSubmission,
   updatePost,
   updateRedirect,
@@ -85,6 +89,7 @@ import {
 import { z } from 'zod';
 import { getSessionUser, type Auth } from './auth.js';
 import { ipHash } from './client-ip.js';
+import type { ThemeSet } from './themes.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -106,6 +111,7 @@ const Key = z.strictObject({ siteId: z.uuid(), key: SlotKey });
 const CollectionParams = z.strictObject({ siteId: z.uuid(), key: CollectionKey });
 const EntryParams = CollectionParams.extend({ id: z.uuid() });
 const FormParams = z.strictObject({ siteId: z.uuid(), key: FormKey });
+const SectionParams = z.strictObject({ siteId: z.uuid(), name: z.string().regex(/^[\w-]{1,64}$/) });
 const TaxonomyParams = z.strictObject({
   siteId: z.uuid(),
   taxonomy: z.enum(schema.TAXONOMIES),
@@ -125,7 +131,13 @@ const PublishBody = z.strictObject({
 /** Admin REST API, consumed by the admin SPA. Admin origin only (enforced in app.ts). */
 export function registerApi(
   app: FastifyInstance,
-  { db, auth, secret, store }: { db: Db; auth: Auth; secret: string; store: MediaStore },
+  {
+    db,
+    auth,
+    secret,
+    store,
+    themes,
+  }: { db: Db; auth: Auth; secret: string; store: MediaStore; themes: ThemeSet },
 ) {
   app.setValidatorCompiler(validatorCompiler);
   app.decorateRequest('actor', null);
@@ -394,6 +406,69 @@ export function registerApi(
         await run(req, (tx, siteId, actor) => deleteRedirect(tx, siteId, actor, req.params.id));
         return reply.code(204).send();
       });
+
+      // theme: the active theme's customizer settings and static sections
+      const activeTheme = async (tx: Tx, siteId: string) => {
+        const version = await siteThemeVersion(tx, siteId, themes.defaults);
+        const loaded = version && themes.get(version.storagePath);
+        if (!loaded) throw new NotFound('This site has no theme');
+        return { themeId: version.themeId, version: version.version, ...loaded };
+      };
+      api.get('/theme', (req) =>
+        run(req, async (tx, siteId) => {
+          const theme = await activeTheme(tx, siteId);
+          const stored = await loadThemeSettings(tx, siteId, theme.themeId);
+          const { manifest } = theme;
+          return {
+            slug: manifest.slug,
+            name: manifest.name,
+            version: theme.version,
+            settings: manifest.settings ?? [],
+            values: stored.values,
+            sections: Object.entries(theme.engine.sections).map(([name, schema]) => ({
+              name,
+              schema,
+              data: stored.sections[name] ?? null,
+            })),
+            pageTemplates: manifest.page_templates ?? [],
+            menus: manifest.menus ?? [],
+            slots: manifest.slots ?? [],
+            collections: manifest.collections ?? [],
+          };
+        }),
+      );
+      api.put('/theme/settings', { schema: { body: z.record(z.string(), z.unknown()) } }, (req) =>
+        run(req, async (tx, siteId, actor) => {
+          const theme = await activeTheme(tx, siteId);
+          const values = await updateThemeSettings(
+            tx,
+            siteId,
+            actor,
+            theme.themeId,
+            theme.manifest.settings ?? [],
+            req.body,
+          );
+          return { values };
+        }),
+      );
+      api.put('/theme/sections/:name', { schema: { params: SectionParams } }, (req) =>
+        run(req, async (tx, siteId, actor) => {
+          const theme = await activeTheme(tx, siteId);
+          const schema = Object.hasOwn(theme.engine.sections, req.params.name)
+            ? theme.engine.sections[req.params.name]
+            : undefined;
+          if (!schema) throw new NotFound('No such section');
+          return updateThemeSection(
+            tx,
+            siteId,
+            actor,
+            theme.themeId,
+            req.params.name,
+            schema,
+            req.body,
+          );
+        }),
+      );
 
       // slots: raw HTML, admins only
       api.get('/slots', (req) => run(req, (tx, siteId) => listSlots(tx, siteId)));
