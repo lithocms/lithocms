@@ -58,10 +58,10 @@ Handled by [release-please](https://github.com/googleapis/release-please) on `ma
 
 ## Development setup
 
-Requirements: Node.js 26 (current LTS), pnpm 12 (`npm i -g pnpm@12`), Docker.
+Requirements: Docker (with Compose).
 
 ```bash
-pnpm dev              # postgres + server (hot reload) + caddy, all in Docker
+docker compose -f compose.dev.yml up   # postgres + server + admin (hot reload) + caddy (`pnpm dev` does the same)
 ```
 
 Then open <http://site.localhost:8080> (a seeded dev site) and <http://admin.localhost:8080>.
@@ -69,20 +69,24 @@ The seed also creates a dev admin, `admin@example.com` / `lithocms-dev`, owner o
 Postgres is on `127.0.0.1:5432` (owner `lithocms_owner`/`owner`, runtime `lithocms_app`/`app`).
 Reset everything with `docker compose -f compose.dev.yml down -v`.
 
-On the host, for tests and tooling:
+Tests and tooling run in a throwaway container (`tools` service), so nothing is installed on the
+host; the test suite gets its own in-memory Postgres:
 
 ```bash
-pnpm install
-pnpm test             # unit + integration (Testcontainers, needs Docker)
-pnpm lint && pnpm typecheck
-pnpm db:generate      # migration from schema changes (packages/core/src/db/schema.ts)
+docker compose -f compose.dev.yml run --rm tools sh -c "pnpm lint && pnpm typecheck && pnpm test"
+docker compose -f compose.dev.yml run --rm tools pnpm format
+docker compose -f compose.dev.yml run --rm tools pnpm db:generate   # migration from schema changes
+docker compose -f compose.dev.yml rm -sf test-postgres              # stop the test database
 ```
+
+With Node 26 and pnpm 12 on the host, `pnpm install && pnpm test` also works
+(the suite then starts its own Postgres with Testcontainers).
 
 ## Pull request checklist
 
 - [ ] Title follows Conventional Commits
 - [ ] Tests added or updated (tenant-isolation tests for any tenant table or MCP tool)
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` pass locally
+- [ ] `pnpm lint && pnpm typecheck && pnpm test` pass (in the `tools` container or on the host)
 - [ ] New runtime dependency? One-line justification in the PR description
       (what it does, why we need it, maintenance status)
 - [ ] User-facing strings go through i18n (`en` and `tr`)
