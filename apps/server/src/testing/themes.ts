@@ -11,7 +11,7 @@ export const TEST_THEME: Record<string, string> = {
   'layouts/base.liquid':
     '<!doctype html><html lang="{{ site.locale }}"><head>{% seo %}' +
     '<link rel="stylesheet" href="{{ \'style.css\' | asset_url }}">{% head_extras %}</head>' +
-    '<body>{{ content_for_layout }}{% body_extras %}</body></html>',
+    '<body>{{ content_for_layout }}{% slot "footer" %}{% body_extras %}</body></html>',
   'templates/index.liquid':
     '<h1>{{ site.name }}</h1>{% for p in posts %}<a href="{{ p.url }}">{{ p.title }}</a>{% endfor %}',
   'templates/post.liquid': '<h1>{{ post.title }}</h1>{{ post.content }}',

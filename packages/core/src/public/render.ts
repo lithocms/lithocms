@@ -61,6 +61,8 @@ export interface PublicRequest {
   secret: string;
   /** Result of a form post, shown in that form after the redirect back. */
   formStatus?: { key: string; status: 'sent' | 'error' };
+  /** Added to `<script>` tags in slots (admin-only HTML) so the CSP lets them run. */
+  scriptNonce?: string;
 }
 
 export type PublicResponse =
@@ -192,7 +194,11 @@ export async function renderPublic(
       },
       slot: (key) => {
         tags.add('slots');
-        return slotHtml.get(key) ?? '';
+        const html = slotHtml.get(key) ?? '';
+        // Ours comes first, and the first of duplicate attributes wins.
+        return req.scriptNonce
+          ? html.replace(/<script\b/gi, `<script nonce="${escapeHtml(req.scriptNonce)}"`)
+          : html;
       },
       section: () => undefined,
     } satisfies RenderHooks,
