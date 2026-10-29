@@ -261,6 +261,22 @@ describe('renderPublic', () => {
     expect(await html('/kategori/haber/')).toContain('<i class="meta">|<p>Son</p>|</i>');
   });
 
+  it('tags pages with what they show, for the page cache', async () => {
+    const tagsOf = async (path: string, search?: string) => {
+      const res = await get(path, search);
+      if ('location' in res) throw new Error('redirect');
+      return res.cache.tags;
+    };
+    const uc = await tagsOf('/uc/');
+    // The post template reads menus; nothing reads categories or collections.
+    expect(uc).toEqual(expect.arrayContaining(['menus', expect.stringMatching(/^post:/)]));
+    expect(uc).not.toContain('categories');
+    expect(uc).not.toContain('collections');
+    expect(await tagsOf('/')).toContain('lists');
+    expect(await tagsOf('/hakkimizda/')).toContain('pages');
+    expect(await tagsOf('/', 'x')).toEqual(expect.arrayContaining(['collections', 'slots']));
+  });
+
   it('renders date archives with the index template as fallback', async () => {
     const page = await html('/2026/02/');
     expect(links(page, 'post')).toEqual(['/iki/']);

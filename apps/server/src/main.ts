@@ -1,9 +1,10 @@
-import { createDb, createDiskStore, runMigrations } from '@lithocms/core';
+import { createDb, createDiskStore, runMigrations, schema } from '@lithocms/core';
 import { buildApp } from './app.js';
 import { createAuth } from './auth.js';
 import { loadConfig } from './config.js';
 import { installJobs, startJobs } from './jobs.js';
 import { smtpMailer } from './mailer.js';
+import { createPageCache } from './page-cache.js';
 import { createSiteResolver } from './sites.js';
 import { loadBundledThemes } from './themes.js';
 import { pino } from 'pino';
@@ -16,8 +17,11 @@ const owner = createDb(config.DATABASE_OWNER_URL, 1);
 const themes = await loadBundledThemes(config.THEMES_DIR, owner.db, config.DEFAULT_THEME, log);
 const appRole = decodeURIComponent(new URL(config.DATABASE_URL).username);
 await installJobs(config.DATABASE_OWNER_URL, owner.db, appRole);
+// Cached pages may point at assets of a theme version this release no longer ships.
+await owner.db.delete(schema.pageCache);
 await owner.pool.end();
 const { db, pool } = createDb(config.DATABASE_URL);
+const cache = config.CACHE_DIR ? createPageCache(config.CACHE_DIR, db) : undefined;
 const jobs = await startJobs({
   url: config.DATABASE_URL,
   db,
@@ -38,6 +42,7 @@ const app = buildApp({
   store: createDiskStore(config.MEDIA_DIR),
   themes,
   jobs,
+  cache,
   logLevel: config.LOG_LEVEL,
 });
 
