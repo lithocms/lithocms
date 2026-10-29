@@ -15,6 +15,7 @@ import {
 } from '@lithocms/core';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ipHash } from './client-ip.js';
+import type { Jobs } from './jobs.js';
 import { normalizeHost, type ResolvedSite } from './sites.js';
 import type { LoadedTheme, ThemeSet } from './themes.js';
 
@@ -56,7 +57,19 @@ function contentSecurityPolicy(allow: string[]): string {
 /** Theme-rendered pages and theme assets, on site origins only. */
 export function registerPublic(
   app: FastifyInstance,
-  { db, themes, adminUrl, secret }: { db: Db; themes: ThemeSet; adminUrl: URL; secret: string },
+  {
+    db,
+    themes,
+    adminUrl,
+    secret,
+    jobs,
+  }: {
+    db: Db;
+    themes: ThemeSet;
+    adminUrl: URL;
+    secret: string;
+    jobs?: Pick<Jobs, 'notifyForm'>;
+  },
 ) {
   const originOf = (site: ResolvedSite) =>
     `${adminUrl.protocol}//${site.primaryDomain}${adminUrl.port ? `:${adminUrl.port}` : ''}`;
@@ -197,9 +210,13 @@ export function registerPublic(
       const body = (request.body ?? {}) as Record<string, string>;
       let status: 'sent' | 'error' = 'sent';
       try {
-        await withSite(db, site.id, (tx) =>
-          submitForm(tx, site.id, key, body, { secret, ipHash: ipHash(request, secret) }),
-        );
+        await withSite(db, site.id, async (tx) => {
+          const id = await submitForm(tx, site.id, key, body, {
+            secret,
+            ipHash: ipHash(request, secret),
+          });
+          if (id) await jobs?.notifyForm(tx, site.id, id);
+        });
       } catch (err) {
         if (err instanceof NotFound) return reply.code(404).send({ error: 'not_found' });
         if (!(err instanceof ValidationFailed)) throw err;

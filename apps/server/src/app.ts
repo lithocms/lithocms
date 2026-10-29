@@ -7,6 +7,7 @@ import { registerAuthRoutes, type Auth } from './auth.js';
 import { registerMediaFiles } from './media-files.js';
 import { registerPublic } from './public.js';
 import { normalizeHost, type ResolvedSite, type SiteResolver } from './sites.js';
+import type { Jobs } from './jobs.js';
 import type { ThemeSet } from './themes.js';
 
 declare module 'fastify' {
@@ -28,6 +29,8 @@ export interface AppOptions {
   store: MediaStore;
   /** Themes that can render public pages. */
   themes: ThemeSet;
+  /** Background jobs; tests may leave them out. */
+  jobs?: Jobs;
   logLevel?: string;
 }
 
@@ -44,6 +47,7 @@ export function buildApp({
   secret,
   store,
   themes,
+  jobs,
   logLevel = 'info',
 }: AppOptions): FastifyInstance {
   const app = Fastify({
@@ -97,7 +101,7 @@ export function buildApp({
   registerApi(app, { db, auth, secret, store });
   registerMediaFiles(app, store);
   // TODO(phase-1): the admin SPA on the admin origin.
-  registerPublic(app, { db, themes, adminUrl, secret });
+  registerPublic(app, { db, themes, adminUrl, secret, jobs });
 
   return app;
 }

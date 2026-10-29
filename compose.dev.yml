@@ -1,5 +1,6 @@
 # Local development stack: `pnpm dev`, then open http://site.localhost:8080 and
 # http://admin.localhost:8080. Sources are mounted; the server restarts on change.
+# Outgoing mail is caught by Mailpit: http://localhost:8025.
 name: lithocms-dev
 
 x-node-modules: &node-modules
@@ -44,9 +45,15 @@ services:
       AUTH_SECRET: dev-only-secret-dev-only-secret-dev-only
       DEV_SITE_DOMAIN: site.localhost
       MEDIA_DIR: /src/.dev-media
+      SMTP_URL: smtp://mailpit:1025
     volumes: *node-modules
     depends_on:
       postgres: { condition: service_healthy }
+      mailpit: { condition: service_started }
+
+  mailpit:
+    image: axllent/mailpit:v1.29
+    ports: ['127.0.0.1:8025:8025']
 
   caddy:
     image: caddy:2-alpine
