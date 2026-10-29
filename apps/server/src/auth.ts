@@ -6,7 +6,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { twoFactor } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { IncomingHttpHeaders } from 'node:http';
+import { clientIp } from './client-ip.js';
 
 export interface AuthOptions {
   db: Db;
@@ -56,8 +56,9 @@ export function createAuth({ db, adminUrl, secret }: AuthOptions) {
       useSecureCookies: adminUrl.protocol === 'https:',
       // Host-only (no Domain attribute): site origins never receive the admin session.
       defaultCookieAttributes: { httpOnly: true, sameSite: 'strict' },
-      // Caddy replaces client-sent X-Forwarded-For with the real peer address.
-      ipAddress: { ipAddressHeaders: ['x-forwarded-for'] },
+      // Set by `toHeaders` from the proxy-appended address; better-auth would trust the first
+      // X-Forwarded-For entry, which the client controls.
+      ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
     },
     plugins: [
       twoFactor({ issuer: 'LithoCMS' }),
@@ -105,16 +106,20 @@ function withoutToken(body: unknown): unknown {
 
 /** The signed-in admin user for this request, if any. */
 export async function getSessionUser(auth: Auth, request: FastifyRequest) {
-  return (await auth.api.getSession({ headers: toHeaders(request.headers) }))?.user ?? null;
+  return (await auth.api.getSession({ headers: toHeaders(request) }))?.user ?? null;
 }
 
-function toHeaders(raw: IncomingHttpHeaders): Headers {
+const CLIENT_IP_HEADER = 'x-litho-client-ip';
+
+function toHeaders(request: FastifyRequest): Headers {
   const headers = new Headers();
-  for (const [key, value] of Object.entries(raw)) {
+  for (const [key, value] of Object.entries(request.headers)) {
+    if (key === CLIENT_IP_HEADER) continue;
     for (const v of Array.isArray(value) ? value : value === undefined ? [] : [value]) {
       headers.append(key, v);
     }
   }
+  headers.set(CLIENT_IP_HEADER, clientIp(request));
   return headers;
 }
 
@@ -127,7 +132,7 @@ export function registerAuthRoutes(app: FastifyInstance, { auth, db }: { auth: A
       const response = await auth.handler(
         new Request(new URL(request.url, auth.options.baseURL), {
           method: request.method,
-          headers: toHeaders(request.headers),
+          headers: toHeaders(request),
           body: request.method === 'POST' ? JSON.stringify(request.body ?? {}) : undefined,
         }),
       );

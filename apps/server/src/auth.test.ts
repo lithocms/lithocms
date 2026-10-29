@@ -162,7 +162,14 @@ describe('auth', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/sign-in/email',
-        headers: { host: ADMIN, origin: `https://${ADMIN}`, 'x-forwarded-for': '203.0.113.9' },
+        // The proxy appends the real address; the client-chosen entries before it and a
+        // forged client-ip header change nothing.
+        headers: {
+          host: ADMIN,
+          origin: `https://${ADMIN}`,
+          'x-forwarded-for': `10.0.0.${i}, 203.0.113.9`,
+          'x-litho-client-ip': `10.1.0.${i}`,
+        },
         payload: { email: credentials.email, password: 'wrong password!' },
       });
       codes.push(res.statusCode);
