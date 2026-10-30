@@ -1,5 +1,5 @@
 import { schema, type Db, type Member } from '@lithocms/core';
-import { and, eq, like } from 'drizzle-orm';
+import { and, eq, like, ne } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Auth } from './auth.js';
@@ -70,22 +70,40 @@ export function createInvitations({
     },
 
     /**
-     * Tells a new member: a pending one gets a fresh link (older ones stop working), anyone
-     * else a note that they have access. Without SMTP, or when sending fails, the admin gets
-     * the link to pass on instead.
+     * Tells a new member: a pending one gets a fresh link, anyone else a note that they have
+     * access. Without SMTP, or when sending fails, the admin gets the link to pass on instead,
+     * but only when the account belongs to this site alone: a link sets the password of the
+     * whole account, so an admin must never be able to take over someone invited elsewhere.
      */
     async notify(member: Member, siteId: string, invitedBy: string): Promise<InviteResult> {
       let link = `${adminUrl.origin}/`;
+      let reveal = false;
       if (member.pending) {
-        const token = randomBytes(32).toString('base64url');
-        await db
-          .delete(schema.verifications)
+        const [elsewhere] = await db
+          .select({ siteId: schema.memberships.siteId })
+          .from(schema.memberships)
           .where(
             and(
-              like(schema.verifications.identifier, 'reset-password:%'),
-              eq(schema.verifications.value, member.userId),
+              eq(schema.memberships.userId, member.userId),
+              ne(schema.memberships.siteId, siteId),
             ),
-          );
+          )
+          .limit(1);
+        reveal = !elsewhere;
+        // Nothing to send and nothing to show: leave the links other sites sent alone.
+        if (!reveal && !mailer) return { mailed: false };
+        if (reveal) {
+          // This site's invitation is the only one: a new link replaces the older ones.
+          await db
+            .delete(schema.verifications)
+            .where(
+              and(
+                like(schema.verifications.identifier, 'reset-password:%'),
+                eq(schema.verifications.value, member.userId),
+              ),
+            );
+        }
+        const token = randomBytes(32).toString('base64url');
         const ctx = await auth.$context;
         await ctx.internalAdapter.createVerificationValue({
           identifier: `reset-password:${token}`,
@@ -95,7 +113,7 @@ export function createInvitations({
         // In the fragment, so it never reaches a server log.
         link = `${adminUrl.origin}/invite#${token}`;
       }
-      const fallback = member.pending ? { mailed: false, link } : { mailed: false };
+      const fallback = reveal ? { mailed: false, link } : { mailed: false };
       if (!mailer) return fallback;
 
       const [site] = await db
