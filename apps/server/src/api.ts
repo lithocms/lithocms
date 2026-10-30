@@ -106,6 +106,7 @@ import {
   type Actor,
   type Db,
   type MediaStore,
+  type VariantQueue,
   type Tx,
 } from '@lithocms/core';
 import { and, eq } from 'drizzle-orm';
@@ -172,6 +173,7 @@ export function registerApi(
     auth,
     secret,
     store,
+    queueVariants,
     themes,
     themeService,
     adminUrl,
@@ -181,6 +183,8 @@ export function registerApi(
     auth: Auth;
     secret: string;
     store: MediaStore;
+    /** Without it (tests), uploads make their variants during the request. */
+    queueVariants?: VariantQueue;
     themes: ThemeSet;
     themeService: ThemeService;
     adminUrl: URL;
@@ -312,7 +316,7 @@ export function registerApi(
         }
         const data = req.body;
         const media = await run(req, (tx, siteId, actor) =>
-          uploadMedia(tx, store, siteId, actor, { data, ...req.query }),
+          uploadMedia(tx, store, siteId, actor, { data, ...req.query }, queueVariants),
         );
         return reply.code(201).send(media);
       });

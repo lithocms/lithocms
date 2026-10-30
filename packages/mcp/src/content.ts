@@ -535,12 +535,19 @@ export function registerContentTools(server: McpServer, ctx: McpContext): void {
       }
       return write(ctx, async (tx) =>
         media(
-          await uploadMedia(tx, ctx.store, ctx.siteId, ctx.actor, {
-            data,
-            filename: filename.slice(0, 255),
-            alt: a.alt,
-            caption: a.caption,
-          }),
+          await uploadMedia(
+            tx,
+            ctx.store,
+            ctx.siteId,
+            ctx.actor,
+            {
+              data,
+              filename: filename.slice(0, 255),
+              alt: a.alt,
+              caption: a.caption,
+            },
+            ctx.queueVariants,
+          ),
         ),
       );
     }),

@@ -127,10 +127,30 @@ export function buildApp({
   registerAuthRoutes(app, { auth, db, adminUrl });
   const themeService = createThemeService({ db, themes, secret, adminUrl });
   const invitations = createInvitations({ auth, db, adminUrl, mailer, log: app.log });
-  registerApi(app, { db, auth, secret, store, themes, themeService, adminUrl, invitations });
+  const queueVariants = jobs?.queueVariants;
+  registerApi(app, {
+    db,
+    auth,
+    secret,
+    store,
+    queueVariants,
+    themes,
+    themeService,
+    adminUrl,
+    invitations,
+  });
   registerOAuth(app, { auth, db, adminUrl });
   const verifyOAuth = createOAuthVerifier({ auth, db, adminUrl });
-  registerMcp(app, { db, secret, store, themes, themeService, adminUrl, verifyOAuth });
+  registerMcp(app, {
+    db,
+    secret,
+    store,
+    queueVariants,
+    themes,
+    themeService,
+    adminUrl,
+    verifyOAuth,
+  });
   registerMediaFiles(app, store);
   registerPublic(app, { db, themes, adminUrl, secret, jobs, cache });
 

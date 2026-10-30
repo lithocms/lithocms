@@ -2,7 +2,7 @@ import { and, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import sharp, { type Metadata, type Sharp } from 'sharp';
 import { z } from 'zod';
-import type { Tx } from '../db/client.js';
+import { withSite, type Db, type Tx } from '../db/client.js';
 import { media, type MediaVariant } from '../db/schema.js';
 import { Forbidden, NotFound, ValidationFailed } from '../errors.js';
 import { can } from '../permissions.js';
@@ -45,10 +45,13 @@ export interface UploadInput {
   caption?: string;
 }
 
+/** Schedules `makeVariants` for a new image, in `tx` so it only runs if the upload commits. */
+export type VariantQueue = (tx: Tx, siteId: string, mediaId: string) => Promise<void>;
+
 /**
- * Stores an uploaded image: the format is sniffed from the bytes, the image is re-encoded
- * (orientation applied, metadata such as EXIF/GPS dropped) and WebP/AVIF variants are made.
- * TODO(phase-1): generate variants in a pg-boss job instead of during the request.
+ * Stores an uploaded image: the format is sniffed from the bytes and the image is re-encoded
+ * (orientation applied, metadata such as EXIF/GPS dropped). Its WebP/AVIF variants are made
+ * by `queue` in the background, or right away without one (tests, CLI).
  */
 export async function uploadMedia(
   tx: Tx,
@@ -56,6 +59,7 @@ export async function uploadMedia(
   siteId: string,
   actor: Actor,
   input: UploadInput,
+  queue?: VariantQueue,
 ): Promise<Media> {
   if (!can(actor.role, 'media.upload')) throw new Forbidden('You cannot upload media');
   if (input.data.byteLength > MAX_UPLOAD_BYTES) throw invalid('File is larger than 20 MB');
@@ -74,9 +78,10 @@ export async function uploadMedia(
     );
   }
   const animated = (meta.pages ?? 1) > 1;
-  const load = () => sharp(input.data, { limitInputPixels: MAX_PIXELS, animated }).rotate();
-
-  const original = await encode(load(), format).toBuffer({ resolveWithObject: true });
+  const original = await encode(
+    sharp(input.data, { limitInputPixels: MAX_PIXELS, animated }).rotate(),
+    format,
+  ).toBuffer({ resolveWithObject: true });
   const width = original.info.width;
   // Animated images decode as one tall strip of frames; the frame height is what we want.
   const height = animated ? (meta.pageHeight ?? meta.height ?? 0) : original.info.height;
@@ -85,21 +90,7 @@ export async function uploadMedia(
   const stem = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${randomUUID()}`;
   const path = `${stem}.${FORMATS[format].ext}`;
   await store.put(`${siteId}/${path}`, original.data);
-
-  const variants: MediaVariant[] = [];
-  for (const w of WIDTHS.filter((w) => w < width)) {
-    for (const variantFormat of animated ? (['webp'] as const) : (['webp', 'avif'] as const)) {
-      const resized = load().resize({ width: w });
-      const data = await (
-        variantFormat === 'webp'
-          ? resized.webp({ quality: 78 })
-          : resized.avif({ quality: 55, effort: 2 })
-      ).toBuffer();
-      const variantPath = `${stem}-${w}.${variantFormat}`;
-      await store.put(`${siteId}/${variantPath}`, data);
-      variants.push({ width: w, format: variantFormat, path: variantPath });
-    }
-  }
+  const variants = queue ? [] : await makeVariants(store, siteId, path, original.data);
 
   const [row] = await tx
     .insert(media)
@@ -123,7 +114,65 @@ export async function uploadMedia(
     entityId: row!.id,
     diff: { originalName: row!.originalName, mime: row!.mime, size: row!.size },
   });
+  await queue?.(tx, siteId, row!.id);
   return row!;
+}
+
+/** Resized WebP copies (and AVIF for stills) of a stored original, written next to it. */
+async function makeVariants(
+  store: MediaStore,
+  siteId: string,
+  path: string,
+  original: Buffer,
+): Promise<MediaVariant[]> {
+  // The original is already re-encoded and upright; only its size and frames matter here.
+  const meta = await sharp(original, { limitInputPixels: MAX_PIXELS }).metadata();
+  const animated = (meta.pages ?? 1) > 1;
+  const stem = path.slice(0, path.lastIndexOf('.'));
+  const variants: MediaVariant[] = [];
+  for (const w of WIDTHS.filter((w) => w < (meta.width ?? 0))) {
+    for (const format of animated ? (['webp'] as const) : (['webp', 'avif'] as const)) {
+      const resized = sharp(original, { limitInputPixels: MAX_PIXELS, animated }).resize({
+        width: w,
+      });
+      const data = await (
+        format === 'webp' ? resized.webp({ quality: 78 }) : resized.avif({ quality: 55, effort: 2 })
+      ).toBuffer();
+      const variantPath = `${stem}-${w}.${format}`;
+      await store.put(`${siteId}/${variantPath}`, data);
+      variants.push({ width: w, format, path: variantPath });
+    }
+  }
+  return variants;
+}
+
+/**
+ * The background half of an upload: makes the image's variants and records them. Image work
+ * runs outside a transaction; a retry after a crash simply makes them again.
+ */
+export async function processVariants(
+  db: Db,
+  store: MediaStore,
+  siteId: string,
+  mediaId: string,
+): Promise<void> {
+  const [row] = await withSite(db, siteId, (tx) =>
+    tx
+      .select({ path: media.path })
+      .from(media)
+      .where(and(eq(media.siteId, siteId), eq(media.id, mediaId))),
+  );
+  const file = row && (await store.open(`${siteId}/${row.path}`));
+  if (!file) return;
+  const chunks: Buffer[] = [];
+  for await (const chunk of file.stream) chunks.push(chunk as Buffer);
+  const variants = await makeVariants(store, siteId, row.path, Buffer.concat(chunks));
+  await withSite(db, siteId, (tx) =>
+    tx
+      .update(media)
+      .set({ variants })
+      .where(and(eq(media.siteId, siteId), eq(media.id, mediaId))),
+  );
 }
 
 export async function getMedia(tx: Tx, siteId: string, id: string): Promise<Media> {

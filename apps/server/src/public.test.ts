@@ -128,6 +128,7 @@ beforeAll(async () => {
         notified.push({ siteId, submissionId });
         return Promise.resolve();
       },
+      queueVariants: () => Promise.resolve(),
       stop: () => Promise.resolve(),
     },
     db,

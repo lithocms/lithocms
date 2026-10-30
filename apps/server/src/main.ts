@@ -35,14 +35,15 @@ const mailer = config.SMTP_URL
       config.MAIL_FROM ?? `LithoCMS <noreply@${config.ADMIN_URL.hostname}>`,
     )
   : null;
-const jobs = await startJobs({ url: config.DATABASE_URL, db, mailer, log });
+const store = createDiskStore(config.MEDIA_DIR);
+const jobs = await startJobs({ url: config.DATABASE_URL, db, store, mailer, log });
 const app = buildApp({
   db,
   sites: await createSiteResolver(db),
   adminUrl: config.ADMIN_URL,
   auth: createAuth({ db, adminUrl: config.ADMIN_URL, secret: config.AUTH_SECRET }),
   secret: config.AUTH_SECRET,
-  store: createDiskStore(config.MEDIA_DIR),
+  store,
   themes,
   jobs,
   mailer,

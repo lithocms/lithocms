@@ -4,6 +4,7 @@ import {
   type Db,
   type McpScope,
   type MediaStore,
+  type VariantQueue,
   type SafeFetchResponse,
   type ThemeVersion,
   type Tx,
@@ -37,6 +38,8 @@ export interface McpContext {
   /** The site's public origin (`https://example.com`); null while it has no domain. */
   siteOrigin: string | null;
   store: MediaStore;
+  /** Makes uploads' image variants in the background; without it, during the call. */
+  queueVariants?: VariantQueue;
   limiter: RateLimiter;
   /** Bundled themes a site without an active theme renders with. */
   themeDefaults: string[];

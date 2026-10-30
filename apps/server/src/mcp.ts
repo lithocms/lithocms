@@ -7,6 +7,7 @@ import {
   withSite,
   type Db,
   type MediaStore,
+  type VariantQueue,
 } from '@lithocms/core';
 import { createMcpServer, RateLimiter } from '@lithocms/mcp';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
@@ -31,6 +32,7 @@ export function registerMcp(
     db,
     secret,
     store,
+    queueVariants,
     themes,
     themeService,
     adminUrl,
@@ -39,6 +41,7 @@ export function registerMcp(
     db: Db;
     secret: string;
     store: MediaStore;
+    queueVariants?: VariantQueue;
     themes: ThemeSet;
     themeService: ThemeService;
     adminUrl: URL;
@@ -104,6 +107,7 @@ export function registerMcp(
         adminUrl,
         siteOrigin,
         store,
+        queueVariants,
         limiter,
         themeDefaults: themes.defaults,
         themes: themeService,
