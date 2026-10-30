@@ -42,6 +42,24 @@ export interface Post {
   createdAt: string;
 }
 
+export interface Redirect {
+  id: string;
+  fromPath: string;
+  /** A `/path` or full URL; empty for 410. */
+  to: string;
+  code: 301 | 302 | 410;
+  source: 'manual' | 'import' | 'slug_change';
+  hits: number;
+  lastHitAt: string | null;
+}
+
+export interface Slot {
+  id: string;
+  key: string;
+  html: string;
+  enabled: boolean;
+}
+
 export interface Revision {
   id: string;
   postId: string;

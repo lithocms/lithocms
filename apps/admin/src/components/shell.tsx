@@ -1,5 +1,6 @@
 import {
   Bot,
+  Code,
   ExternalLink,
   FileText,
   Files,
@@ -11,6 +12,7 @@ import {
   Palette,
   Rows3,
   Settings,
+  Signpost,
   SquareMenu,
   Tags,
   X,
@@ -66,6 +68,8 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
       <p className="mt-5 mb-1 px-2.5 text-xs text-muted">{t('nav.site')}</p>
       {site.atLeast('editor') && item('/menus', <SquareMenu />, t('nav.menus'))}
       {site.atLeast('admin') && item('/theme', <Palette />, t('nav.theme'))}
+      {site.atLeast('admin') && item('/slots', <Code />, t('nav.slots'))}
+      {site.atLeast('admin') && item('/redirects', <Signpost />, t('nav.redirects'))}
       {site.atLeast('admin') && item('/settings', <Settings />, t('nav.settings'))}
       {item('/claude', <Bot />, t('nav.claude'))}
     </nav>
