@@ -1,16 +1,25 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ErrorNote, Loading, PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Field, Input, Select, Textarea } from '@/components/ui/input';
+import { Field, Input, Textarea } from '@/components/ui/input';
 import { Pill } from '@/components/ui/pill';
-import { api, ApiError, useApi } from '@/lib/api';
+import { FieldListEditor, typedKey } from '@/components/field-list';
+import { api, ApiError, useApi, type Issue } from '@/lib/api';
+import { fieldError, otherIssues } from '@/lib/issues';
 import { useFormat, useI18n, useLabel } from '@/lib/i18n';
 import { useSite } from '@/lib/session';
 import type { Form, FormField, Submission } from '@/lib/types';
 import { cn, plain } from '@/lib/utils';
+
+/** An entry form to start from: name, email, message. */
+const STARTER_FIELDS: FormField[] = [
+  { key: 'name', label: { en: 'Name', tr: 'Ad soyad' }, type: 'text', required: true },
+  { key: 'email', label: { en: 'Email', tr: 'E-posta' }, type: 'email', required: true },
+  { key: 'message', label: { en: 'Message', tr: 'Mesaj' }, type: 'textarea', required: true },
+];
 
 const FIELD_TYPES: FormField['type'][] = [
   'text',
@@ -153,19 +162,19 @@ function Submissions({ form }: { form: Form }) {
 }
 
 function FormSettings({ form, onSaved }: { form: Form; onSaved: () => void }) {
-  const { t, locale } = useI18n();
-  const l = useLabel();
+  const { t } = useI18n();
   const site = useSite();
   const [fields, setFields] = useState(form.fields);
   const [notify, setNotify] = useState(form.notifyEmails.join('\n'));
   const [success, setSuccess] = useState(form.successMessage);
   const [consent, setConsent] = useState(form.consentText);
   const [state, setState] = useState('');
+  const [issues, setIssues] = useState<Issue[]>([]);
   const [busy, setBusy] = useState(false);
-  const setField = (i: number, patch: Partial<FormField>) =>
-    setFields(fields.map((f, j) => (j === i ? { ...f, ...patch } : f)));
   const save = async () => {
     setBusy(true);
+    setIssues([]);
+    setState('');
     try {
       await api(site.path(`/forms/${form.key}`), {
         method: 'PUT',
@@ -182,11 +191,10 @@ function FormSettings({ form, onSaved }: { form: Form; onSaved: () => void }) {
       setState(t('common.saved'));
       onSaved();
     } catch (err) {
-      setState(
-        err instanceof ApiError
-          ? err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ') || err.message
-          : t('common.error'),
-      );
+      if (err instanceof ApiError && err.issues.length) {
+        setIssues(err.issues);
+        setState(otherIssues(err.issues) || t('fields.fix'));
+      } else setState(err instanceof ApiError ? err.message : t('common.error'));
     } finally {
       setBusy(false);
     }
@@ -195,91 +203,12 @@ function FormSettings({ form, onSaved }: { form: Form; onSaved: () => void }) {
     <div className="grid max-w-3xl gap-6 px-4 py-6 md:px-6">
       <section className="grid gap-2">
         <h2 className="text-section font-semibold">{t('forms.fields')}</h2>
-        {fields.map((f, i) => (
-          <div
-            key={i}
-            className="grid gap-2 rounded-card border border-border p-3 sm:grid-cols-[1fr_9rem_8rem_auto] sm:items-center"
-          >
-            <Input
-              aria-label={t('menus.label')}
-              value={l(f.label)}
-              onChange={(e) =>
-                setField(i, {
-                  label:
-                    typeof f.label === 'string'
-                      ? e.target.value
-                      : { ...f.label, [locale]: e.target.value },
-                })
-              }
-            />
-            <Input
-              aria-label="key"
-              value={f.key}
-              spellCheck={false}
-              className="font-mono text-[13px]"
-              onChange={(e) => setField(i, { key: e.target.value })}
-            />
-            <Select
-              aria-label={t('posts.status')}
-              value={f.type}
-              onChange={(e) => setField(i, { type: e.target.value as FormField['type'] })}
-            >
-              {FIELD_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </Select>
-            <span className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-[13px]">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-ink"
-                  checked={f.required ?? false}
-                  onChange={(e) => setField(i, { required: e.target.checked })}
-                />
-                *
-              </label>
-              <Button
-                size="icon-sm"
-                variant="danger"
-                aria-label={t('common.remove')}
-                onClick={() => setFields(fields.filter((_, j) => j !== i))}
-              >
-                <Trash2 />
-              </Button>
-            </span>
-            {f.type === 'select' && (
-              <Input
-                aria-label="options"
-                className="sm:col-span-4"
-                placeholder="a, b, c"
-                value={(f.options ?? []).map((o) => o.value).join(', ')}
-                onChange={(e) =>
-                  setField(i, {
-                    options: e.target.value
-                      .split(',')
-                      .map((v) => v.trim())
-                      .filter(Boolean)
-                      .map((value) => ({ value })),
-                  })
-                }
-              />
-            )}
-          </div>
-        ))}
-        <div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              setFields([...fields, { key: `field_${fields.length + 1}`, label: '', type: 'text' }])
-            }
-          >
-            <Plus aria-hidden="true" />
-            {t('common.add')}
-          </Button>
-        </div>
+        <FieldListEditor
+          fields={fields}
+          types={FIELD_TYPES}
+          onChange={setFields}
+          errorFor={(i) => fieldError(issues, i)}
+        />
       </section>
       <Field label={t('forms.notify')} hint={t('forms.notifyHint')} htmlFor="notify">
         <Textarea
@@ -308,10 +237,88 @@ function FormSettings({ form, onSaved }: { form: Form; onSaved: () => void }) {
   );
 }
 
+/** Names a new form; it starts with name, email and message fields to adjust. */
+function NewForm({ taken, onCreated }: { taken: string[]; onCreated: (key: string) => void }) {
+  const { t } = useI18n();
+  const site = useSite();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const create = async () => {
+    const key = typed.replace(/-+$/, '');
+    if (taken.includes(key)) return setError(t('forms.keyTaken'));
+    setBusy(true);
+    setError('');
+    try {
+      await api(site.path(`/forms/${key}`), {
+        method: 'PUT',
+        body: { fields: STARTER_FIELDS },
+      });
+      setOpen(false);
+      onCreated(key);
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.status === 400 ? t('forms.keyInvalid') : t('common.error'),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <Button variant="primary" onClick={() => setOpen(true)}>
+        <Plus aria-hidden="true" />
+        {t('forms.new')}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        {open && (
+          <DialogContent title={t('forms.new')} closeLabel={t('common.cancel')}>
+            <form
+              className="grid gap-4 p-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void create();
+              }}
+            >
+              <Field
+                label={t('fields.key')}
+                hint={t('forms.keyHint')}
+                htmlFor="form-key"
+                error={error}
+              >
+                <Input
+                  id="form-key"
+                  name="form-key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoFocus
+                  required
+                  placeholder="iletisim"
+                  value={typed}
+                  onChange={(e) => setTyped(typedKey(e.target.value, '-'))}
+                  className="font-mono"
+                />
+              </Field>
+              <p className="text-[13px] text-muted">{t('forms.starter')}</p>
+              <div className="border-t border-rule pt-4">
+                <Button type="submit" variant="primary" disabled={busy || !typed}>
+                  {t('forms.create')}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        )}
+      </Dialog>
+    </>
+  );
+}
+
 export function Forms() {
   const { t } = useI18n();
   const { key } = useParams();
   const site = useSite();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const list = useApi<Form[]>(site.path('/forms'));
   if (list.error) return <ErrorNote error={list.error} />;
@@ -320,7 +327,15 @@ export function Forms() {
   if (!form) {
     return (
       <>
-        <PageHeader title={t('nav.forms')} />
+        <PageHeader title={t('nav.forms')}>
+          <NewForm
+            taken={list.data.map((f) => f.key)}
+            onCreated={(created) => {
+              list.reload();
+              void navigate(site.to(`/forms/${created}?tab=settings`));
+            }}
+          />
+        </PageHeader>
         {list.data.length === 0 ? (
           <p className="px-4 py-10 text-sm text-muted md:px-6">{t('forms.none')}</p>
         ) : (
