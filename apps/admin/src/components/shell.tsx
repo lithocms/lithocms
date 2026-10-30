@@ -15,6 +15,7 @@ import {
   Signpost,
   SquareMenu,
   Tags,
+  Users,
   X,
 } from 'lucide-react';
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
@@ -70,6 +71,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
       {site.atLeast('admin') && item('/theme', <Palette />, t('nav.theme'))}
       {site.atLeast('admin') && item('/slots', <Code />, t('nav.slots'))}
       {site.atLeast('admin') && item('/redirects', <Signpost />, t('nav.redirects'))}
+      {site.atLeast('admin') && item('/team', <Users />, t('nav.team'))}
       {site.atLeast('admin') && item('/settings', <Settings />, t('nav.settings'))}
       {item('/claude', <Bot />, t('nav.claude'))}
     </nav>

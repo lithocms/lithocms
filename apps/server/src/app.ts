@@ -11,7 +11,9 @@ import { registerMediaFiles } from './media-files.js';
 import { registerPublic } from './public.js';
 import { createThemeService } from './theme-service.js';
 import { normalizeHost, type ResolvedSite, type SiteResolver } from './sites.js';
+import { createInvitations } from './invitations.js';
 import type { Jobs } from './jobs.js';
+import type { Mailer } from './mailer.js';
 import type { PageCache } from './page-cache.js';
 import type { ThemeSet } from './themes.js';
 
@@ -34,6 +36,8 @@ export interface AppOptions {
   store: MediaStore;
   /** Themes that can render public pages. */
   themes: ThemeSet;
+  /** Outgoing mail; without it invitation links are shown to the admin instead. */
+  mailer?: Mailer | null;
   /** Background jobs; tests may leave them out. */
   jobs?: Jobs;
   /** Rendered pages; without it every request renders. */
@@ -60,6 +64,7 @@ export function buildApp({
   store,
   themes,
   jobs,
+  mailer = null,
   cache,
   admin,
   logLevel = 'info',
@@ -121,7 +126,8 @@ export function buildApp({
 
   registerAuthRoutes(app, { auth, db, adminUrl });
   const themeService = createThemeService({ db, themes, secret, adminUrl });
-  registerApi(app, { db, auth, secret, store, themes, themeService, adminUrl });
+  const invitations = createInvitations({ auth, db, adminUrl, mailer, log: app.log });
+  registerApi(app, { db, auth, secret, store, themes, themeService, adminUrl, invitations });
   registerOAuth(app, { auth, db, adminUrl });
   const verifyOAuth = createOAuthVerifier({ auth, db, adminUrl });
   registerMcp(app, { db, secret, store, themes, themeService, adminUrl, verifyOAuth });

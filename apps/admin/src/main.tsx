@@ -8,6 +8,7 @@ import { oauthQuery } from '@/lib/oauth';
 import { SessionProvider, useSession } from '@/lib/session';
 import type { Me } from '@/lib/types';
 import { Login } from '@/pages/login';
+import { AcceptInvite } from '@/pages/invite';
 import { OAuthConsent, OAuthSite, ResumeAuthorization } from '@/pages/oauth';
 import { Overview } from '@/pages/overview';
 import { PostList } from '@/pages/posts';
@@ -27,6 +28,7 @@ const Collections = lazy(() =>
 );
 const Redirects = lazy(() => import('@/pages/redirects').then((m) => ({ default: m.Redirects })));
 const Slots = lazy(() => import('@/pages/slots').then((m) => ({ default: m.Slots })));
+const Team = lazy(() => import('@/pages/team').then((m) => ({ default: m.Team })));
 const Terms = lazy(() => import('@/pages/terms').then((m) => ({ default: m.Terms })));
 const ClaudePage = lazy(() => import('@/pages/claude').then((m) => ({ default: m.ClaudePage })));
 
@@ -38,7 +40,9 @@ function KnownSite({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const me = useApi<Me>('/me');
+  const me = useApi<Me>(location.pathname === '/invite' ? null : '/me');
+  // An invitation link: whoever opens it sets that account's password.
+  if (location.pathname === '/invite') return <AcceptInvite />;
   if (me.loading && !me.data) return <Loading />;
   if (!me.data) return <Login onSignedIn={me.reload} />;
   // An app's authorization sent a signed-in user to sign in (unless it asked for a fresh one).
@@ -72,6 +76,7 @@ function App() {
             <Route path="terms/:taxonomy?" element={<Terms />} />
             <Route path="redirects" element={<Redirects />} />
             <Route path="slots" element={<Slots />} />
+            <Route path="team" element={<Team />} />
             <Route path="media" element={<MediaLibrary />} />
             <Route path="menus" element={<Menus />} />
             <Route path="collections/:key?" element={<Collections />} />

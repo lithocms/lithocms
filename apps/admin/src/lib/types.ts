@@ -42,6 +42,16 @@ export interface Post {
   createdAt: string;
 }
 
+export interface Member {
+  userId: string;
+  name: string;
+  email: string;
+  role: Role;
+  twoFactorEnabled: boolean;
+  /** Invited, password not set yet. */
+  pending: boolean;
+}
+
 export interface Redirect {
   id: string;
   fromPath: string;
