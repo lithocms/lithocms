@@ -132,6 +132,59 @@ describe('auth', () => {
     ).toBeUndefined();
   });
 
+  it('lets people change their name and password, never their privileges or email', async () => {
+    const email = 'self@example.com';
+    await createPasswordUser(auth, { email, name: 'Self', password: credentials.password });
+    const login = await signIn({ email, password: credentials.password });
+    const cookie = String(login.headers['set-cookie']).split(';')[0]!;
+    const post = (url: string, payload: object) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/auth${url}`,
+        headers: { host: ADMIN, origin: `https://${ADMIN}`, cookie },
+        payload,
+      });
+    const row = () =>
+      db.query.users.findFirst({
+        where: (u, { eq }) => eq(u.id, login.json<{ user: { id: string } }>().user.id),
+      });
+
+    await post('/update-user', { isInstanceOwner: true });
+    await post('/update-user', { twoFactorEnabled: true });
+    await post('/update-user', { email: 'boss@example.com' });
+    expect(await row()).toMatchObject({ email, isInstanceOwner: false, twoFactorEnabled: false });
+    expect((await post('/update-user', { name: 'Renamed' })).statusCode).toBe(200);
+    expect((await row())?.name).toBe('Renamed');
+
+    // Two-step sign-in needs the password, and is on only once a code proves the app has it.
+    expect((await post('/two-factor/enable', { password: 'wrong password!' })).statusCode).toBe(
+      400,
+    );
+    const enable = await post('/two-factor/enable', { password: credentials.password });
+    expect(enable.json<{ totpURI: string }>().totpURI).toMatch(/^otpauth:\/\/totp\/LithoCMS:/);
+    expect((await row())?.twoFactorEnabled).toBe(false);
+
+    expect(
+      (
+        await post('/change-password', {
+          currentPassword: 'wrong password!',
+          newPassword: 'a new long password',
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await post('/change-password', {
+          currentPassword: credentials.password,
+          newPassword: 'a new long password',
+          revokeOtherSessions: true,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await signIn({ email, password: credentials.password })).statusCode).toBe(401);
+    expect((await signIn({ email, password: 'a new long password' })).statusCode).toBe(200);
+  });
+
   it('rejects requests from other origins', async () => {
     const res = await app.inject({
       method: 'POST',

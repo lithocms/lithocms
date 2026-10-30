@@ -29,6 +29,7 @@ const Collections = lazy(() =>
 const Redirects = lazy(() => import('@/pages/redirects').then((m) => ({ default: m.Redirects })));
 const Slots = lazy(() => import('@/pages/slots').then((m) => ({ default: m.Slots })));
 const Team = lazy(() => import('@/pages/team').then((m) => ({ default: m.Team })));
+const AccountPage = lazy(() => import('@/pages/account').then((m) => ({ default: m.AccountPage })));
 const Terms = lazy(() => import('@/pages/terms').then((m) => ({ default: m.Terms })));
 const ClaudePage = lazy(() => import('@/pages/claude').then((m) => ({ default: m.ClaudePage })));
 
@@ -77,6 +78,7 @@ function App() {
             <Route path="redirects" element={<Redirects />} />
             <Route path="slots" element={<Slots />} />
             <Route path="team" element={<Team />} />
+            <Route path="account" element={<AccountPage />} />
             <Route path="media" element={<MediaLibrary />} />
             <Route path="menus" element={<Menus />} />
             <Route path="collections/:key?" element={<Collections />} />

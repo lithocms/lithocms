@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/input';
 import { api } from '@/lib/api';
@@ -108,6 +108,7 @@ function SiteSwitcher() {
 function Account() {
   const { t, locale, setLocale } = useI18n();
   const { me, reload } = useSession();
+  const site = useSite();
   const signOut = async () => {
     await api('/auth/sign-out', { method: 'POST', body: {} }).catch(() => undefined);
     reload();
@@ -123,9 +124,13 @@ function Account() {
         <option value="tr">TR</option>
         <option value="en">EN</option>
       </Select>
-      <span className="hidden max-w-48 truncate px-2 text-[13px] text-muted md:inline">
+      <Link
+        to={site.to('/account')}
+        title={t('nav.account')}
+        className="hidden max-w-48 truncate rounded-control px-2 py-1 text-[13px] text-muted hover:text-ink md:inline"
+      >
         {me.user.email}
-      </span>
+      </Link>
       <Button
         variant="ghost"
         size="icon"
