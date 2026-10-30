@@ -1,7 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Tx } from '../db/client.js';
-import { sites } from '../db/schema.js';
+import { media, sites } from '../db/schema.js';
+import { mediaUrl } from '../media/media.js';
 import { Forbidden, NotFound } from '../errors.js';
 import { can } from '../permissions.js';
 import { audit, type Actor } from './audit.js';
@@ -27,6 +28,8 @@ export const SiteSettingsInput = z
     locale: z.enum(['tr', 'en']),
     timezone: TimeZone,
     logo: z.uuid().nullable(),
+    /** The browser tab icon (favicon), a square image. */
+    icon: z.uuid().nullable(),
     social: z
       .record(z.string().regex(/^[a-z0-9_-]{1,30}$/), HttpsUrl)
       .refine((v) => Object.keys(v).length <= 20, 'At most 20 social links'),
@@ -42,6 +45,7 @@ export interface SiteSettings {
   locale: string;
   timezone: string;
   logo: string | null;
+  icon: string | null;
   social: Record<string, string>;
   postsPerPage: number | null;
   searchEngines: boolean;
@@ -57,6 +61,7 @@ export async function getSiteSettings(tx: Tx, siteId: string): Promise<SiteSetti
     locale: site.locale,
     timezone: site.timezone,
     logo: typeof s.logo === 'string' ? s.logo : null,
+    icon: typeof s.icon === 'string' ? s.icon : null,
     social:
       typeof s.social === 'object' && s.social !== null ? (s.social as Record<string, string>) : {},
     postsPerPage: typeof s.posts_per_page === 'number' ? s.posts_per_page : null,
@@ -79,6 +84,7 @@ export async function updateSiteSettings(
   };
   set('tagline', input.tagline);
   set('logo', input.logo);
+  set('icon', input.icon);
   set('social', input.social);
   set('posts_per_page', input.postsPerPage);
   set('search_engines', input.searchEngines);
@@ -99,4 +105,15 @@ export async function updateSiteSettings(
     diff: { changed: Object.keys(input).sort() },
   });
   return getSiteSettings(tx, siteId);
+}
+
+/** Where the site's icon is served, if one is set and still exists. */
+export async function siteIconUrl(tx: Tx, siteId: string): Promise<string | null> {
+  const { icon } = await getSiteSettings(tx, siteId);
+  if (!icon) return null;
+  const [row] = await tx
+    .select({ path: media.path })
+    .from(media)
+    .where(and(eq(media.siteId, siteId), eq(media.id, icon)));
+  return row ? mediaUrl(row.path) : null;
 }
