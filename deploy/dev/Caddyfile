@@ -4,6 +4,9 @@
 }
 
 :80 {
+	# As in production (docs/INSTALL_UPDATE.md); pages and assets go out compressed.
+	encode zstd gzip
+
 	# The admin SPA comes from the Vite dev server (hot reload); its API, MCP and OAuth
 	# discovery from the app.
 	@admin-ui {
