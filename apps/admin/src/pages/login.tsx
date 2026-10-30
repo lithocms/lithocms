@@ -1,3 +1,4 @@
+import { Fingerprint } from 'lucide-react';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Mark } from '@/components/shell';
 import { Button } from '@/components/ui/button';
@@ -23,7 +24,7 @@ export function AuthFrame({ children }: { children: ReactNode }) {
 
 export function Login({ onSignedIn }: { onSignedIn: () => void }) {
   const { t } = useI18n();
-  const [step, setStep] = useState<'password' | 'code'>('password');
+  const [step, setStep] = useState<'password' | 'code' | 'backup'>('password');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -44,10 +45,10 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
         });
         if (res.twoFactorRedirect) return setStep('code');
       } else {
-        res = await api('/auth/two-factor/verify-totp', {
-          method: 'POST',
-          body: { code: form.get('code'), oauth_query },
-        });
+        res = await api(
+          step === 'code' ? '/auth/two-factor/verify-totp' : '/auth/two-factor/verify-backup-code',
+          { method: 'POST', body: { code: form.get('code'), oauth_query } },
+        );
       }
       if (oauth_query && follow(res)) return;
       onSignedIn();
@@ -61,6 +62,36 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
       setBusy(false);
     }
   };
+
+  // Without a password; an app's authorization in progress resumes once signed in.
+  const passkey = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const options = await api<PublicKeyCredentialRequestOptionsJSON>(
+        '/auth/passkey/generate-authenticate-options',
+      );
+      const credential = (await navigator.credentials.get({
+        publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options),
+      })) as PublicKeyCredential | null;
+      if (!credential) return;
+      await api('/auth/passkey/verify-authentication', {
+        method: 'POST',
+        body: { response: credential.toJSON() },
+      });
+      onSignedIn();
+    } catch (err) {
+      // Cancelling the browser's prompt is not an error worth showing.
+      if (!(err instanceof DOMException && err.name === 'NotAllowedError')) {
+        setError(err instanceof ApiError ? t('login.passkeyFailed') : t('common.error'));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+  const passkeys =
+    typeof PublicKeyCredential !== 'undefined' &&
+    'parseRequestOptionsFromJSON' in PublicKeyCredential;
 
   return (
     <AuthFrame>
@@ -91,6 +122,18 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
               />
             </Field>
           </>
+        ) : step === 'backup' ? (
+          <Field label={t('login.backupCode')} hint={t('login.backupCodeHint')} htmlFor="code">
+            <Input
+              id="code"
+              name="code"
+              autoComplete="off"
+              spellCheck={false}
+              autoFocus
+              required
+              className="font-mono"
+            />
+          </Field>
         ) : (
           <Field label={t('login.code')} hint={t('login.codeHint')} htmlFor="code">
             <Input
@@ -111,6 +154,30 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
         <Button type="submit" variant="primary" disabled={busy} className="h-9">
           {busy ? t('common.loading') : t(step === 'password' ? 'login.submit' : 'login.verify')}
         </Button>
+        {step === 'password' && passkeys && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            className="h-9"
+            onClick={() => void passkey()}
+          >
+            <Fingerprint aria-hidden="true" />
+            {t('login.passkey')}
+          </Button>
+        )}
+        {step !== 'password' && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setError('');
+              setStep(step === 'code' ? 'backup' : 'code');
+            }}
+          >
+            {t(step === 'code' ? 'login.useBackup' : 'login.useApp')}
+          </Button>
+        )}
       </form>
     </AuthFrame>
   );
