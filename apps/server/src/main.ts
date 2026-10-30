@@ -29,17 +29,13 @@ await owner.db.delete(schema.pageCache);
 await owner.pool.end();
 const { db, pool } = createDb(config.DATABASE_URL);
 const cache = config.CACHE_DIR ? createPageCache(config.CACHE_DIR, db) : undefined;
-const jobs = await startJobs({
-  url: config.DATABASE_URL,
-  db,
-  mailer: config.SMTP_URL
-    ? smtpMailer(
-        config.SMTP_URL,
-        config.MAIL_FROM ?? `LithoCMS <noreply@${config.ADMIN_URL.hostname}>`,
-      )
-    : null,
-  log,
-});
+const mailer = config.SMTP_URL
+  ? smtpMailer(
+      config.SMTP_URL,
+      config.MAIL_FROM ?? `LithoCMS <noreply@${config.ADMIN_URL.hostname}>`,
+    )
+  : null;
+const jobs = await startJobs({ url: config.DATABASE_URL, db, mailer, log });
 const app = buildApp({
   db,
   sites: await createSiteResolver(db),
@@ -49,6 +45,7 @@ const app = buildApp({
   store: createDiskStore(config.MEDIA_DIR),
   themes,
   jobs,
+  mailer,
   cache,
   admin: await loadAdminApp(config.ADMIN_DIR),
   logLevel: config.LOG_LEVEL,

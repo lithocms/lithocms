@@ -9,11 +9,14 @@ import {
   scopesFor,
   assertFormManager,
   can,
+  Conflict,
   deleteTheme,
   Forbidden,
   getThemeVersion,
   listThemeLibrary,
   rollbackTheme,
+  addMember,
+  assertCanManage,
   assertRedirectManager,
   CollectionCreateInput,
   CollectionKey,
@@ -42,7 +45,13 @@ import {
   listForms,
   listMedia,
   listMenus,
+  listMembers,
   listRedirects,
+  getMember,
+  MemberInviteInput,
+  MemberUpdateInput,
+  removeMember,
+  updateMember,
   listSlots,
   listSubmissions,
   listPosts,
@@ -107,6 +116,7 @@ import {
 import { z } from 'zod';
 import { getSessionUser, type Auth } from './auth.js';
 import { ipHash } from './client-ip.js';
+import type { Invitations } from './invitations.js';
 import { ThemeInvalid, type ThemeService } from './theme-service.js';
 import { readThemeZip, ThemeZipError, writeThemeZip } from './theme-zip.js';
 import type { ThemeSet } from './themes.js';
@@ -130,6 +140,7 @@ const Id = z.strictObject({ siteId: z.uuid(), id: z.uuid() });
 const MAX_THEME_ZIP_BYTES = 12 * 1024 * 1024;
 const Location = z.strictObject({ siteId: z.uuid(), location: MenuLocation });
 const Key = z.strictObject({ siteId: z.uuid(), key: SlotKey });
+const UserParams = z.strictObject({ siteId: z.uuid(), userId: z.uuid() });
 const CollectionParams = z.strictObject({ siteId: z.uuid(), key: CollectionKey });
 const EntryParams = CollectionParams.extend({ id: z.uuid() });
 const FormParams = z.strictObject({ siteId: z.uuid(), key: FormKey });
@@ -161,6 +172,7 @@ export function registerApi(
     themes,
     themeService,
     adminUrl,
+    invitations,
   }: {
     db: Db;
     auth: Auth;
@@ -169,6 +181,7 @@ export function registerApi(
     themes: ThemeSet;
     themeService: ThemeService;
     adminUrl: URL;
+    invitations: Invitations;
   },
 ) {
   app.setValidatorCompiler(validatorCompiler);
@@ -589,6 +602,49 @@ export function registerApi(
       api.patch('/settings', { schema: { body: SiteSettingsInput } }, (req) =>
         run(req, (tx, siteId, actor) => updateSiteSettings(tx, siteId, actor, req.body)),
       );
+
+      // members (admins): invitations make the account and mail a link to set a password
+      api.get('/members', (req) =>
+        run(req, (tx, siteId, actor) => {
+          if (!can(actor.role, 'user.manage')) throw new Forbidden('Only admins can see members');
+          return listMembers(tx, siteId);
+        }),
+      );
+      api.post('/members', { schema: { body: MemberInviteInput } }, async (req, reply) => {
+        const { email, name, role } = req.body;
+        // Before an account is made for someone who will not get in.
+        assertCanManage(req.actor!, { role });
+        const user = await invitations.findOrCreateUser(email, name);
+        const member = await run(req, (tx, siteId, actor) =>
+          addMember(tx, siteId, actor, user.id, role),
+        );
+        const sent = await invitations.notify(member, req.actor!.siteId, req.actor!.userId);
+        return reply.code(201).send({ member, ...sent });
+      });
+      api.post('/members/:userId/invite', { schema: { params: UserParams } }, async (req) => {
+        const member = await run(req, async (tx, siteId, actor) => {
+          const current = await getMember(tx, siteId, req.params.userId);
+          assertCanManage(actor, current);
+          if (!current.pending) throw new Conflict('They have already set a password');
+          return current;
+        });
+        return {
+          member,
+          ...(await invitations.notify(member, req.actor!.siteId, req.actor!.userId)),
+        };
+      });
+      api.patch(
+        '/members/:userId',
+        { schema: { params: UserParams, body: MemberUpdateInput } },
+        (req) =>
+          run(req, (tx, siteId, actor) =>
+            updateMember(tx, siteId, actor, req.params.userId, req.body),
+          ),
+      );
+      api.delete('/members/:userId', { schema: { params: UserParams } }, async (req, reply) => {
+        await run(req, (tx, siteId, actor) => removeMember(tx, siteId, actor, req.params.userId));
+        return reply.code(204).send();
+      });
 
       // slots: raw HTML, admins only
       api.get('/slots', (req) => run(req, (tx, siteId) => listSlots(tx, siteId)));

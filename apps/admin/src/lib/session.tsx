@@ -22,7 +22,7 @@ export function useSession() {
   return ctx;
 }
 
-const RANK: Record<Role, number> = { author: 0, editor: 1, admin: 2, owner: 3 };
+export const RANK: Record<Role, number> = { author: 0, editor: 1, admin: 2, owner: 3 };
 
 /** The site in the URL, its API prefix and what the user's role allows there. */
 export function useSite() {
