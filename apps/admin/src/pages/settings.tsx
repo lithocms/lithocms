@@ -120,6 +120,9 @@ export function SiteSettingsPage() {
           <Field label={t('settings.logo')}>
             <ImageField value={form.logo} onChange={(id) => set('logo', id)} />
           </Field>
+          <Field label={t('settings.icon')} hint={t('settings.iconHint')}>
+            <ImageField value={form.icon} onChange={(id) => set('icon', id)} />
+          </Field>
           {saveBar}
         </SettingsRow>
         <SettingsRow title={t('settings.reading')} hint={t('settings.readingHint')}>

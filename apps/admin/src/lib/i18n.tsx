@@ -437,6 +437,8 @@ const en = {
   'settings.locale': 'Language',
   'settings.timezone': 'Time zone',
   'settings.logo': 'Logo',
+  'settings.icon': 'Site icon',
+  'settings.iconHint': 'Shown in browser tabs and bookmarks. A square image, at least 512×512.',
   'settings.reading': 'Reading',
   'settings.readingHint':
     'How lists of posts are shown and whether search engines may index the site.',
@@ -895,6 +897,9 @@ const tr: Record<Key, string> = {
   'settings.locale': 'Dil',
   'settings.timezone': 'Saat dilimi',
   'settings.logo': 'Logo',
+  'settings.icon': 'Site ikonu',
+  'settings.iconHint':
+    'Tarayıcı sekmesinde ve yer imlerinde görünür. Kare bir görsel, en az 512×512.',
   'settings.reading': 'Okuma',
   'settings.readingHint':
     'Yazı listelerinin nasıl gösterileceği ve arama motorlarının siteyi dizinleyip dizinlemeyeceği.',

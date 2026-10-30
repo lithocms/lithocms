@@ -6,6 +6,7 @@ import {
   renderPublic,
   robotsTxt,
   rssFeed,
+  siteIconUrl,
   sitemapIndex,
   sitemapPart,
   siteThemeVersion,
@@ -213,6 +214,15 @@ export function registerPublic(
 
   app.get('/', page);
   app.get('/*', page);
+
+  // Browsers ask for it whatever the page says: the site's icon, or "none" rather than a 404.
+  app.get('/favicon.ico', async (request, reply) => {
+    const site = request.site;
+    if (!site) return reply.code(404).send({ error: 'not_found' });
+    const url = await withSite(db, site.id, (tx) => siteIconUrl(tx, site.id));
+    reply.header('cache-control', 'public, max-age=300');
+    return url ? reply.redirect(url, 302) : reply.code(204).send();
+  });
 
   // robots.txt, sitemaps and the feed
   const xmlRoute = (

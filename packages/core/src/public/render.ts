@@ -140,6 +140,7 @@ export async function renderPublic(
   const status = page.pageType !== '404' ? 200 : redirect ? 410 : 404;
 
   const [logo] = await images(tx, site.id, [setting(site, 'logo')]);
+  const [icon] = await images(tx, site.id, [setting(site, 'icon')]);
   const stored = await loadThemeSettings(tx, site.id, theme.themeId);
   const defs = theme.manifest.settings ?? [];
   const settings = effectiveSettings(defs, stored.values);
@@ -194,7 +195,10 @@ export async function renderPublic(
     hooks: {
       assetUrl: (path) => theme.assetUrl(path),
       headExtras: () =>
-        `<link rel="alternate" type="application/rss+xml" title="${escapeHtml(site.name)}" href="${escapeHtml(req.origin)}/feed/">`,
+        `<link rel="alternate" type="application/rss+xml" title="${escapeHtml(site.name)}" href="${escapeHtml(req.origin)}/feed/">` +
+        (icon
+          ? `<link rel="icon" type="${escapeHtml(icon.mime)}" href="${escapeHtml(mediaUrl(icon.path))}">`
+          : ''),
       bodyExtras: () => '',
       seo: () =>
         seoTags(site, { ...page.seo, image: seoImage }, canonical, req.origin, status !== 200),

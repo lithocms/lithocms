@@ -233,6 +233,7 @@ export interface SiteSettings {
   locale: string;
   timezone: string;
   logo: string | null;
+  icon: string | null;
   social: Record<string, string>;
   postsPerPage: number | null;
   searchEngines: boolean;

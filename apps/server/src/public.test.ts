@@ -11,6 +11,7 @@ import {
   runMigrations,
   schema,
   updatePost,
+  updateSiteSettings,
   updateSlot,
   upsertForm,
   withSite,
@@ -18,6 +19,7 @@ import {
   type Db,
 } from '@lithocms/core';
 import { startTestDatabase, type TestDatabase } from '@lithocms/core/testing';
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readdir, rm, utimes } from 'node:fs/promises';
@@ -290,6 +292,43 @@ describe('redirects', () => {
     const res = await get('a.example', '/kaldirildi/');
     expect(res.statusCode).toBe(410);
     expect(res.body).toContain('<h1>Not found</h1>');
+  });
+});
+
+describe('site icon', () => {
+  it('answers /favicon.ico with nothing, then with the icon once one is set', async () => {
+    const none = await get('a.example', '/favicon.ico');
+    expect(none.statusCode).toBe(204);
+
+    const icon = await withSite(db, siteA, async (tx) => {
+      const [row] = await tx
+        .insert(schema.media)
+        .values({
+          siteId: siteA,
+          path: '2026/10/icon.png',
+          originalName: 'icon.png',
+          mime: 'image/png',
+          size: 1,
+          width: 512,
+          height: 512,
+        })
+        .returning();
+      await updateSiteSettings(tx, siteA, admin, { icon: row!.id });
+      return row!;
+    });
+    const set = await get('a.example', '/favicon.ico');
+    expect(set.statusCode).toBe(302);
+    expect(set.headers.location).toBe('/media/2026/10/icon.png');
+    expect((await get('a.example')).body).toContain(
+      '<link rel="icon" type="image/png" href="/media/2026/10/icon.png">',
+    );
+    // Other sites are unaffected.
+    expect((await get('b.example', '/favicon.ico')).statusCode).toBe(204);
+
+    await withSite(db, siteA, async (tx) => {
+      await updateSiteSettings(tx, siteA, admin, { icon: null });
+      await tx.delete(schema.media).where(eq(schema.media.id, icon.id));
+    });
   });
 });
 
