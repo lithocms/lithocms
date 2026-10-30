@@ -15,6 +15,7 @@ import {
   getMedia,
   listMedia,
   MediaListQuery,
+  processVariants,
   updateMedia,
   uploadMedia,
   type UploadInput,
@@ -117,6 +118,30 @@ describe('uploadMedia', () => {
     expect(row).toMatchObject({ mime: 'image/gif', width: 600, height: 400 });
     expect(row.variants.length).toBeGreaterThan(0);
     expect(row.variants.every((v) => v.format === 'webp')).toBe(true);
+  });
+
+  it('leaves variants to a queue, which makes them after the upload commits', async () => {
+    const queued: string[] = [];
+    const data = await solid(1000, 500).jpeg().toBuffer();
+    const row = await inA((tx) =>
+      uploadMedia(tx, store, siteA, author, { data, filename: 'later.jpg' }, (_tx, site, id) => {
+        expect(site).toBe(siteA);
+        queued.push(id);
+        return Promise.resolve();
+      }),
+    );
+    expect(row.variants).toEqual([]);
+    expect(queued).toEqual([row.id]);
+
+    await processVariants(db, store, siteA, row.id);
+    const done = await inA((tx) => getMedia(tx, siteA, row.id));
+    expect(done.variants.map((v) => `${v.width}.${v.format}`)).toEqual([
+      '400.webp',
+      '400.avif',
+      '800.webp',
+      '800.avif',
+    ]);
+    expect((await sharp(await file(done.variants[2]!.path)).metadata()).width).toBe(800);
   });
 
   it.each([

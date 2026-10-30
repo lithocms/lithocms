@@ -1,4 +1,12 @@
-import { formNotification, withSite, type Db, type Tx } from '@lithocms/core';
+import {
+  formNotification,
+  processVariants,
+  withSite,
+  type Db,
+  type MediaStore,
+  type Tx,
+  type VariantQueue,
+} from '@lithocms/core';
 import { sql } from 'drizzle-orm';
 import { fromDrizzle, PgBoss } from 'pg-boss';
 import type { Logger } from 'pino';
@@ -9,16 +17,27 @@ import type { PageCache } from './page-cache.js';
 // startup; the app runs the queue as the runtime role.
 
 const SCHEMA = 'pgboss';
-const QUEUES = { formNotify: 'form-notify', cacheSweep: 'cache-sweep' } as const;
+const QUEUES = {
+  formNotify: 'form-notify',
+  cacheSweep: 'cache-sweep',
+  mediaVariants: 'media-variants',
+} as const;
 
 interface FormNotifyJob {
   siteId: string;
   submissionId: string;
 }
 
+interface MediaVariantsJob {
+  siteId: string;
+  mediaId: string;
+}
+
 export interface Jobs {
   /** Queues the notification email in `tx`, so it is only sent if the submission commits. */
   notifyForm(tx: Tx, siteId: string, submissionId: string): Promise<void>;
+  /** Queues an upload's image variants in its transaction. */
+  queueVariants: VariantQueue;
   stop(): Promise<void>;
 }
 
@@ -34,7 +53,7 @@ export async function installJobs(ownerUrl: string, ownerDb: Db, appRole: string
   await boss.start();
   for (const name of Object.values(QUEUES)) {
     if (!(await boss.getQueue(name))) {
-      // SMTP hiccups are common: back off up to about an hour.
+      // SMTP hiccups are common: back off up to about an hour. Variants retry the same way.
       await boss.createQueue(name, { retryLimit: 6, retryDelay: 60, retryBackoff: true });
     }
   }
@@ -56,12 +75,14 @@ export async function installJobs(ownerUrl: string, ownerDb: Db, appRole: string
 export async function startJobs({
   url,
   db,
+  store,
   mailer,
   cache,
   log,
 }: {
   url: string;
   db: Db;
+  store: MediaStore;
   mailer: Mailer | null;
   cache?: PageCache;
   log: Logger;
@@ -73,6 +94,11 @@ export async function startJobs({
     await boss.schedule(QUEUES.cacheSweep, '*/15 * * * *');
     await boss.work(QUEUES.cacheSweep, () => cache.sweep());
   }
+  // One image at a time per process: resizing is CPU-bound.
+  await boss.work<MediaVariantsJob>(QUEUES.mediaVariants, async ([job]) => {
+    const { siteId, mediaId } = job!.data;
+    await processVariants(db, store, siteId, mediaId);
+  });
   if (mailer) {
     await boss.work<FormNotifyJob>(QUEUES.formNotify, async ([job]) => {
       const { siteId, submissionId } = job!.data;
@@ -86,6 +112,11 @@ export async function startJobs({
     async notifyForm(tx, siteId, submissionId) {
       if (!mailer) return;
       await boss.send(QUEUES.formNotify, { siteId, submissionId } satisfies FormNotifyJob, {
+        db: fromDrizzle(tx, sql),
+      });
+    },
+    async queueVariants(tx, siteId, mediaId) {
+      await boss.send(QUEUES.mediaVariants, { siteId, mediaId } satisfies MediaVariantsJob, {
         db: fromDrizzle(tx, sql),
       });
     },
