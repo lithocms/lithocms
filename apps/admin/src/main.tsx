@@ -73,7 +73,8 @@ function App() {
             <Route index element={<Overview />} />
             <Route path="posts" element={<PostList type="post" />} />
             <Route path="pages" element={<PostList type="page" />} />
-            <Route path="posts/:postId" element={<PostEditor />} />
+            <Route path="posts/:postId" element={<PostEditor type="post" />} />
+            <Route path="pages/:postId" element={<PostEditor type="page" />} />
             <Route path="terms/:taxonomy?" element={<Terms />} />
             <Route path="redirects" element={<Redirects />} />
             <Route path="slots" element={<Slots />} />

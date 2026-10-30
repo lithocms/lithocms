@@ -152,6 +152,29 @@ describe('tags', () => {
     );
   });
 
+  it('lists sections in the order the home page places them', () => {
+    const schema = (name: string) => `{% schema %}{"name": "${name}"}{% endschema %}`;
+    const engine = createThemeEngine({
+      'layouts/base.liquid': "{% section 'header' %}{{ content_for_layout }}",
+      'templates/index.liquid': "{% section 'hero' %}{%- section \"faq\" %}{% section 'hero' %}",
+      'templates/page.liquid': "{% section 'contact' %}",
+      'sections/contact.liquid': schema('Contact'),
+      'sections/faq.liquid': schema('FAQ'),
+      'sections/header.liquid': schema('Header'),
+      'sections/hero.liquid': schema('Hero'),
+      'sections/unused.liquid': schema('Unused'),
+      'sections/aside.liquid': schema('Aside'),
+    });
+    expect(Object.keys(engine.sections)).toEqual([
+      'hero',
+      'faq',
+      'header',
+      'contact',
+      'aside',
+      'unused',
+    ]);
+  });
+
   it('paginates and reports the page size', async () => {
     const template =
       '{% paginate posts by 12 %}{% for p in posts %}{{ p }}{% endfor %}{% endpaginate %}';

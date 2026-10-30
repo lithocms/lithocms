@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowLeft, ArrowUp, ExternalLink, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { ImageField } from '@/components/media-picker';
 import { Revisions } from '@/components/revisions';
 import { RichText } from '@/components/rich-text';
@@ -76,15 +76,15 @@ function usePost(postId: string, version: number) {
   return state;
 }
 
-export function PostEditor() {
+/** Posts open under /posts, pages under /pages, so the navigation shows where you are. */
+export function PostEditor({ type: routeType }: { type: 'post' | 'page' }) {
   const { postId = 'new' } = useParams();
-  const [params] = useSearchParams();
   // Bumped after a revision is restored: reload the post and start the form afresh.
   const [version, setVersion] = useState(0);
   const loaded = usePost(postId, version);
   if (loaded.error) return <ErrorNote error={loaded.error} />;
   if (!loaded.srcs) return <Loading />;
-  const type = loaded.post?.type ?? (params.get('type') === 'page' ? 'page' : 'post');
+  const type = loaded.post?.type ?? routeType;
   return (
     <EditorForm
       key={`${loaded.post?.id ?? 'new'}:${loaded.post?.updatedAt ?? ''}`}
@@ -197,7 +197,7 @@ function EditorForm({
       if (saved.status !== 'scheduled') setPublishAt('');
       setDraft((d) => ({ ...d, slug: saved.slug }));
       setNotice(t('common.saved'));
-      if (!post) void navigate(site.to(`/posts/${saved.id}`), { replace: true });
+      if (!post) void navigate(site.to(`/${type}s/${saved.id}`), { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         setIssues(

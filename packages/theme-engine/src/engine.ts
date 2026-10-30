@@ -110,12 +110,31 @@ export function createThemeEngine(files: ThemeFiles): ThemeEngine {
   // `raw` would bypass escaping.
   delete liquid.filters.raw;
 
-  const sections: Record<string, SectionSchema> = {};
+  const schemas = new Map<string, SectionSchema>();
   for (const [path, source] of Object.entries(files)) {
     const name = /^sections\/([\w-]+)\.liquid$/.exec(path)?.[1];
     const schema = name && sectionSchema(source);
-    if (name && schema) sections[name] = schema;
+    if (name && schema) schemas.set(name, schema);
   }
+  // In the order a visitor meets them: as placed on the home page, then in the other
+  // templates and layouts; sections placed nowhere last, by name.
+  const placed: string[] = [];
+  const paths = Object.keys(files)
+    .filter((path) => /^(templates|layouts)\//.test(path))
+    .sort(
+      (a, b) =>
+        Number(b === 'templates/index.liquid') - Number(a === 'templates/index.liquid') ||
+        a.localeCompare(b),
+    );
+  for (const path of paths) {
+    for (const [, name] of files[path]!.matchAll(/\{%-?\s*section\s+['"]([\w-]+)['"]/g)) {
+      if (name && schemas.has(name) && !placed.includes(name)) placed.push(name);
+    }
+  }
+  const rest = [...schemas.keys()].filter((n) => !placed.includes(n)).sort();
+  const sections: Record<string, SectionSchema> = Object.fromEntries(
+    [...placed, ...rest].map((name) => [name, schemas.get(name)!]),
+  );
 
   const cache = new Map<string, Template[]>();
   const engine: ThemeEngine = {
