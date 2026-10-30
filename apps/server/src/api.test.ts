@@ -159,6 +159,22 @@ describe('admin API', () => {
     expect(revisions.json()).toHaveLength(2);
   });
 
+  it('finds published posts and pages to link to, with their public paths', async () => {
+    const make = async (type: 'post' | 'page', title: string, publish: boolean) => {
+      const { id } = (await call('editor', 'POST', a('/posts'), { type, title })).json<{
+        id: string;
+      }>();
+      if (publish) await call('editor', 'POST', a(`/posts/${id}/publish`), {});
+      return id;
+    };
+    const page = await make('page', 'Linkable page', true);
+    await make('post', 'Linkable draft', false);
+    const links = await call('author', 'GET', a('/links?query=linkable'));
+    expect(links.json()).toEqual([
+      { id: page, type: 'page', title: 'Linkable page', path: '/linkable-page/' },
+    ]);
+  });
+
   it('publishes and schedules only for editors', async () => {
     const { id } = (
       await call('author', 'POST', a('/posts'), { type: 'post', title: 'Pub' })

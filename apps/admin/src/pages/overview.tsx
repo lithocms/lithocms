@@ -41,7 +41,7 @@ function PostRows({
       {items.map((p) => (
         <li key={p.id} className="border-b border-rule last:border-0">
           <Link
-            to={site.to(`/posts/${p.id}`)}
+            to={site.to(`/${p.type}s/${p.id}`)}
             className="flex h-11 items-center gap-3 px-4 hover:bg-raised"
           >
             <span className="min-w-0 flex-1 truncate text-sm">{p.title}</span>
@@ -71,7 +71,7 @@ export function Overview() {
     <>
       <PageHeader title={site.name}>
         <Button variant="primary" asChild>
-          <Link to={site.to('/posts/new?type=post')}>
+          <Link to={site.to('/posts/new')}>
             <PenLine aria-hidden="true" />
             {t('overview.write')}
           </Link>

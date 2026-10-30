@@ -48,7 +48,7 @@ export function PostList({ type }: { type: 'post' | 'page' }) {
     <>
       <PageHeader title={t(type === 'post' ? 'nav.posts' : 'nav.pages')}>
         <Button variant="primary" asChild>
-          <Link to={site.to(`/posts/new?type=${type}`)}>
+          <Link to={site.to(`/${type}s/new`)}>
             <Plus aria-hidden="true" />
             {t(type === 'post' ? 'posts.new' : 'pages.new')}
           </Link>
@@ -106,7 +106,7 @@ export function PostList({ type }: { type: 'post' | 'page' }) {
               <tr key={p.id} className="h-12 border-b border-rule hover:bg-raised">
                 <td className="max-w-0 pr-3 pl-4 md:pl-6">
                   <Link
-                    to={site.to(`/posts/${p.id}`)}
+                    to={site.to(`/${type}s/${p.id}`)}
                     className="block truncate font-medium hover:underline"
                   >
                     {p.title}

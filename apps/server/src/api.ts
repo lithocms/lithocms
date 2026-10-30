@@ -101,6 +101,8 @@ import {
   upsertEntry,
   upsertForm,
   withSite,
+  loadPublicSite,
+  postUrls,
   type Actor,
   type Db,
   type MediaStore,
@@ -136,6 +138,7 @@ const STATUS: Record<DomainError['code'], number> = {
 };
 
 const Id = z.strictObject({ siteId: z.uuid(), id: z.uuid() });
+const LinkQuery = z.strictObject({ query: z.string().max(200).optional() });
 /** A theme is at most 10 MB unpacked (THEME_CONTRACT.md); its zip is smaller. */
 const MAX_THEME_ZIP_BYTES = 12 * 1024 * 1024;
 const Location = z.strictObject({ siteId: z.uuid(), location: MenuLocation });
@@ -248,6 +251,23 @@ export function registerApi(
       // posts and pages
       api.get('/posts', { schema: { querystring: PostListQuery } }, (req) =>
         run(req, (tx, siteId) => listPosts(tx, siteId, req.query)),
+      );
+      // Published posts and pages with their public paths, for links in content.
+      api.get('/links', { schema: { querystring: LinkQuery } }, (req) =>
+        run(req, async (tx, siteId) => {
+          const { items } = await listPosts(tx, siteId, {
+            status: 'published',
+            query: req.query.query,
+            limit: 10,
+          });
+          const urls = await postUrls(tx, await loadPublicSite(tx, siteId), items);
+          return items.map((p) => ({
+            id: p.id,
+            type: p.type,
+            title: p.title,
+            path: urls.get(p.id),
+          }));
+        }),
       );
       api.post('/posts', { schema: { body: PostCreateInput } }, async (req, reply) =>
         reply
