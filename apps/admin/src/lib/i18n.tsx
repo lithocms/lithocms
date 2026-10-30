@@ -202,6 +202,8 @@ const en = {
   'team.mailedAdded': '{email} already had an account; we let them know they can sign in.',
   'team.added': '{name} already had an account and can now sign in to this site.',
   'team.notMailed': 'No email went out to {email}. Send them this link yourself.',
+  'team.notMailedElsewhere':
+    'No email went out to {email}. They were also invited to another site, so only they can receive the link: ask them to use that invitation, or try again once email works.',
   'team.linkHint':
     'It works once, for 7 days. Anyone with it can set the password, so send it only to them.',
   'team.link': 'Invitation link',
@@ -554,6 +556,8 @@ const tr: Record<Key, string> = {
   'team.mailedAdded': '{email} adresinin zaten hesabı vardı; giriş yapabileceğini bildirdik.',
   'team.added': '{name} adlı kişinin zaten hesabı vardı; artık bu siteye giriş yapabilir.',
   'team.notMailed': '{email} adresine e-posta gitmedi. Bu bağlantıyı ona kendiniz iletin.',
+  'team.notMailedElsewhere':
+    '{email} adresine e-posta gitmedi. Bu kişi başka bir siteye de davet edildiği için bağlantıyı yalnızca kendisi alabilir: o daveti kullanmasını isteyin ya da e-posta çalışınca yeniden deneyin.',
   'team.linkHint':
     'Bir kez ve 7 gün boyunca çalışır. Bağlantıyı alan şifreyi belirleyebilir; yalnızca o kişiye gönderin.',
   'team.link': 'Davet bağlantısı',

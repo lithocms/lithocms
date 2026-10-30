@@ -101,7 +101,9 @@ function InviteForm({ roles, onDone }: { roles: Grantable[]; onDone: () => void 
                 email: result.member.email,
               })
             : result.member.pending
-              ? t('team.notMailed', { email: result.member.email })
+              ? t(result.link ? 'team.notMailed' : 'team.notMailedElsewhere', {
+                  email: result.member.email,
+                })
               : t('team.added', { name: result.member.name })}
         </p>
         {result.link && <LinkBox link={result.link} />}
@@ -356,7 +358,9 @@ export function Team() {
               <p className="text-sm">
                 {link.mailed
                   ? t('team.mailedInvite', { email: link.member.email })
-                  : t('team.notMailed', { email: link.member.email })}
+                  : t(link.link ? 'team.notMailed' : 'team.notMailedElsewhere', {
+                      email: link.member.email,
+                    })}
               </p>
               {link.link && <LinkBox link={link.link} />}
             </div>

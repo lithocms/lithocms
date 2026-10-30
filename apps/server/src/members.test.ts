@@ -23,6 +23,7 @@ let db: Db;
 let pool: Pool;
 let app: FastifyInstance;
 let siteA: string;
+let siteB: string;
 let mediaDir: string;
 const cookies: Record<string, string> = {};
 const sent: Mail[] = [];
@@ -40,10 +41,11 @@ const call = (
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   payload?: object,
+  site = siteA,
 ) =>
   app.inject({
     method,
-    url: `/api/sites/${siteA}${path}`,
+    url: `/api/sites/${site}${path}`,
     headers: headers(who),
     ...(payload ? { payload } : {}),
   });
@@ -61,6 +63,8 @@ beforeAll(async () => {
   ({ db, pool } = createDb(tdb.appUrl));
   const [site] = await db.insert(schema.sites).values({ name: 'Kuzey', locale: 'tr' }).returning();
   siteA = site!.id;
+  const [other] = await db.insert(schema.sites).values({ name: 'Other' }).returning();
+  siteB = other!.id;
   mediaDir = await mkdtemp(join(tmpdir(), 'litho-members-media-'));
   const owner = createDb(tdb.ownerUrl);
   const themes = await testThemes(owner.db, { test: TEST_THEME });
@@ -83,13 +87,14 @@ beforeAll(async () => {
     },
     logLevel: 'silent',
   });
-  for (const [name, role] of [
-    ['admin', 'admin'],
-    ['editor', 'editor'],
+  for (const [name, role, siteId] of [
+    ['admin', 'admin', siteA],
+    ['editor', 'editor', siteA],
+    ['otherAdmin', 'admin', siteB],
   ] as const) {
     const email = `${name}@example.com`;
     const user = await createPasswordUser(auth, { email, name, password });
-    await db.insert(schema.memberships).values({ userId: user.id, siteId: siteA, role });
+    await db.insert(schema.memberships).values({ userId: user.id, siteId, role });
     cookies[name] = String((await signIn(email)).headers['set-cookie']).split(';')[0]!;
   }
   // Someone with an account elsewhere on the instance.
@@ -222,5 +227,48 @@ describe('members', () => {
     expect((await signIn('known@example.com')).statusCode).toBe(200);
     const after = (await call('admin', 'GET', '/members')).json<{ email: string }[]>();
     expect(after.map((m) => m.email)).not.toContain('known@example.com');
+  });
+
+  it('never hands an admin the link of someone invited to another site too', async () => {
+    mailFails = true;
+    const first = await call('admin', 'POST', '/members', {
+      email: 'shared@example.com',
+      role: 'author',
+    });
+    const linkA = first.json<{ link: string }>().link;
+    expect(linkA).toContain('/invite#');
+
+    // Site B's admin invites the same pending person: with the mail failing, no link.
+    const second = await call(
+      'otherAdmin',
+      'POST',
+      '/members',
+      { email: 'shared@example.com', role: 'editor' },
+      siteB,
+    );
+    expect(second.statusCode).toBe(201);
+    expect(second.json()).toEqual({
+      member: expect.objectContaining({ pending: true }) as unknown,
+      mailed: false,
+    });
+    // Nor on a new link, from either site, now that the account is on both.
+    const userId = first.json<{ member: { userId: string } }>().member.userId;
+    for (const [who, site] of [
+      ['otherAdmin', siteB],
+      ['admin', siteA],
+    ] as const) {
+      const again = await call(who, 'POST', `/members/${userId}/invite`, undefined, site);
+      expect(again.json()).not.toHaveProperty('link');
+    }
+    mailFails = false;
+
+    // The link site A handed out still works.
+    const accepted = await app.inject({
+      method: 'POST',
+      url: '/api/auth/reset-password',
+      headers: headers(),
+      payload: { token: linkA.split('#')[1], newPassword: 'shared person password' },
+    });
+    expect(accepted.statusCode).toBe(200);
   });
 });
