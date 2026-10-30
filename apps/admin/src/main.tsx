@@ -25,6 +25,8 @@ const Forms = lazy(() => import('@/pages/forms').then((m) => ({ default: m.Forms
 const Collections = lazy(() =>
   import('@/pages/collections').then((m) => ({ default: m.Collections })),
 );
+const Redirects = lazy(() => import('@/pages/redirects').then((m) => ({ default: m.Redirects })));
+const Slots = lazy(() => import('@/pages/slots').then((m) => ({ default: m.Slots })));
 const Terms = lazy(() => import('@/pages/terms').then((m) => ({ default: m.Terms })));
 const ClaudePage = lazy(() => import('@/pages/claude').then((m) => ({ default: m.ClaudePage })));
 
@@ -68,6 +70,8 @@ function App() {
             <Route path="pages" element={<PostList type="page" />} />
             <Route path="posts/:postId" element={<PostEditor />} />
             <Route path="terms/:taxonomy?" element={<Terms />} />
+            <Route path="redirects" element={<Redirects />} />
+            <Route path="slots" element={<Slots />} />
             <Route path="media" element={<MediaLibrary />} />
             <Route path="menus" element={<Menus />} />
             <Route path="collections/:key?" element={<Collections />} />
