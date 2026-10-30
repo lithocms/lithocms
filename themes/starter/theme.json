@@ -1,0 +1,62 @@
+{
+  "name": "Starter",
+  "slug": "starter",
+  "version": "0.1.0",
+  "author": "LithoCMS",
+  "license": "MIT",
+  "engine": ">=0.1.0",
+  "description": "A plain, complete theme to start your own from. Read README.md first.",
+  "tokens": {
+    "colors": {
+      "bg": "#ffffff",
+      "fg": "#1c1c1a",
+      "muted": "#5f5f5a",
+      "rule": "#e4e4e0",
+      "accent": "#1b6c80"
+    },
+    "fonts": {
+      "body": "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+      "heading": "Georgia, 'Times New Roman', serif"
+    },
+    "radius": "6px",
+    "content_width": "68ch"
+  },
+  "dark_tokens": {
+    "colors": { "bg": "#151514", "fg": "#ececea", "muted": "#a3a39d", "rule": "#2e2e2b" }
+  },
+  "settings": [
+    {
+      "id": "accent",
+      "type": "color",
+      "default": "#1b6c80",
+      "label": { "tr": "Vurgu rengi", "en": "Accent color" }
+    },
+    {
+      "id": "show_author",
+      "type": "boolean",
+      "default": true,
+      "label": { "tr": "Yazıda yazarı göster", "en": "Show the author on posts" }
+    },
+    {
+      "id": "footer_note",
+      "type": "text",
+      "label": { "tr": "Alt bilgi notu", "en": "Footer note" }
+    }
+  ],
+  "menus": [
+    { "location": "primary", "label": { "tr": "Ana menü", "en": "Main menu" } },
+    { "location": "footer", "label": { "tr": "Alt menü", "en": "Footer menu" } }
+  ],
+  "slots": [
+    { "key": "head", "label": { "tr": "Head kodu (analitik)", "en": "Head code (analytics)" } },
+    { "key": "footer", "label": { "tr": "Sayfa sonu kodu", "en": "End of page code" } }
+  ],
+  "supports": { "search": true, "dark_mode": true },
+  "page_templates": [
+    {
+      "key": "page.landing",
+      "label": { "tr": "Bölümlü sayfa", "en": "Page with sections" },
+      "sections": true
+    }
+  ]
+}

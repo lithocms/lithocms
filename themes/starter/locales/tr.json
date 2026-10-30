@@ -1,0 +1,15 @@
+{
+  "skip": "İçeriğe geç",
+  "menu": "Menü",
+  "latest": "Son yazılar",
+  "page": "Sayfa",
+  "newer": "Daha yeni",
+  "older": "Daha eski",
+  "minutes": "dk okuma",
+  "search": "Ara",
+  "search_placeholder": "Sitede ara…",
+  "results": "sonuç",
+  "not_found": "Sayfa bulunamadı",
+  "not_found_text": "Adres değişmiş olabilir. Arama yapabilir ya da ana sayfaya dönebilirsin.",
+  "home": "Ana sayfa"
+}

@@ -1,0 +1,44 @@
+{
+  "name": "@lithocms/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch --conditions=@lithocms/source src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@better-auth/cimd": "1.7.14",
+    "@better-auth/mcp": "1.7.14",
+    "@better-auth/oauth-provider": "1.7.14",
+    "@better-auth/passkey": "^1.7.14",
+    "@lithocms/core": "workspace:*",
+    "@lithocms/mcp": "workspace:*",
+    "@lithocms/theme-engine": "workspace:*",
+    "@modelcontextprotocol/node": "^2.1.2",
+    "@node-rs/argon2": "^2.2.2",
+    "better-auth": "^1.7.14",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.7",
+    "fastify-type-provider-zod": "^7.0.0",
+    "nodemailer": "^10.2.1",
+    "pg-boss": "^12.38.0",
+    "pino": "^10.4.0",
+    "yauzl": "^3.4.0",
+    "yazl": "^3.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
+    "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
+    "sharp": "^0.35.5",
+    "tsx": "^4.23.15"
+  }
+}

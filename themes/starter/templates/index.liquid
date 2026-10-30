@@ -1,0 +1,17 @@
+{%- comment -%} Home page and the post listing (/page/2/ …). One <h1> per page. {%- endcomment -%}
+{%- paginate posts by 10 -%}
+{%- if paginate.current_page == 1 -%}
+  {% section 'hero' %}
+  <section class="wrap">
+    <h2>{{ 'latest' | t }}</h2>
+    {% render 'post-list', list: posts %}
+    {% render 'pagination', paginate: paginate %}
+  </section>
+{%- else -%}
+  <section class="wrap">
+    <h1>{{ 'latest' | t }}</h1>
+    {% render 'post-list', list: posts %}
+    {% render 'pagination', paginate: paginate %}
+  </section>
+{%- endif -%}
+{%- endpaginate -%}

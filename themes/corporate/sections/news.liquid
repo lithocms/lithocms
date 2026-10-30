@@ -1,0 +1,18 @@
+{%- if posts.size > 0 -%}
+<section class="block news" id="news">
+  <div class="news-col">
+    <h2 class="subhead rise">{{ section.settings.heading | default: site.name }}</h2>
+    {% render 'post-rows', list: posts %}
+    {%- if section.settings.more_url != blank -%}<a class="news-more" href="{{ section.settings.more_url }}">{{ 'more_posts' | t }}</a>{%- endif -%}
+  </div>
+</section>
+{%- endif -%}
+{% schema %}
+{
+  "name": { "tr": "Son yazılar", "en": "Latest posts" },
+  "settings": [
+    { "id": "heading", "type": "text", "label": { "tr": "Başlık", "en": "Heading" } },
+    { "id": "more_url", "type": "url", "label": { "tr": "Tüm yazılar adresi", "en": "All posts link" } }
+  ]
+}
+{% endschema %}

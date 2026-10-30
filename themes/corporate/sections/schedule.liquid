@@ -1,0 +1,45 @@
+{%- assign s = section.settings -%}
+{%- if section.blocks.size > 0 -%}
+<section class="block schedule" id="schedule">
+  <h2 class="head rise">{{ s.heading }}</h2>
+  {%- if s.note != blank -%}<p class="schedule-note rise">{{ s.note }}</p>{%- endif -%}
+  <table class="schedule-table">
+    <tbody>
+    {%- for b in section.blocks -%}
+      {%- if b.type == 'part' -%}
+        <tr class="schedule-part"><th colspan="4" scope="colgroup">{{ b.settings.name }}</th></tr>
+      {%- else -%}
+        <tr class="schedule-row rise">
+          <th scope="row">{%- if b.settings.href != blank -%}<a href="{{ b.settings.href }}">{{ b.settings.title }}</a>{%- else -%}{{ b.settings.title }}{%- endif -%}</th>
+          <td>{{ b.settings.format }}</td>
+          <td>{{ b.settings.place }}</td>
+          <td class="schedule-time">{{ b.settings.time }}</td>
+        </tr>
+      {%- endif -%}
+    {%- endfor -%}
+    </tbody>
+  </table>
+</section>
+{%- endif -%}
+{% schema %}
+{
+  "name": { "tr": "Takvim / dönemler", "en": "Schedule" },
+  "settings": [
+    { "id": "heading", "type": "text", "label": { "tr": "Başlık", "en": "Heading" } },
+    { "id": "note", "type": "textarea", "label": { "tr": "Kısa not", "en": "Short note" } }
+  ],
+  "blocks": [
+    { "type": "part", "name": { "tr": "Ara başlık (ay, dönem)", "en": "Part heading (month, term)" }, "settings": [
+      { "id": "name", "type": "text", "label": { "tr": "Ad", "en": "Name" } }
+    ] },
+    { "type": "row", "name": { "tr": "Satır", "en": "Row" }, "settings": [
+      { "id": "title", "type": "text", "label": { "tr": "Program", "en": "Programme" } },
+      { "id": "format", "type": "text", "label": { "tr": "Biçim (hafta içi, hafta sonu…)", "en": "Format (weekdays, weekends…)" } },
+      { "id": "place", "type": "text", "label": { "tr": "Yer / şube", "en": "Place or branch" } },
+      { "id": "time", "type": "text", "label": { "tr": "Tarih / saat", "en": "Date or time" } },
+      { "id": "href", "type": "url", "label": { "tr": "Bağlantı", "en": "Link" } }
+    ] }
+  ],
+  "max_blocks": 50
+}
+{% endschema %}

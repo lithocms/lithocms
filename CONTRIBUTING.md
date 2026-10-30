@@ -4,11 +4,11 @@ Thanks for your interest! This guide covers how work flows from a branch to a re
 
 ## Branches
 
-| Branch | Purpose |
-|---|---|
-| `main` | Released code only. Every release is tagged here (`vX.Y.Z`). |
-| `dev` | Integration branch and the default branch. All feature work targets `dev`. |
-| `feat/<topic>`, `fix/<topic>`, `chore/<topic>` … | Short-lived work branches, created from `dev`. |
+| Branch                                           | Purpose                                                                    |
+| ------------------------------------------------ | -------------------------------------------------------------------------- |
+| `main`                                           | Released code only. Every release is tagged here (`vX.Y.Z`).               |
+| `dev`                                            | Integration branch and the default branch. All feature work targets `dev`. |
+| `feat/<topic>`, `fix/<topic>`, `chore/<topic>` … | Short-lived work branches, created from `dev`.                             |
 
 Flow:
 
@@ -40,10 +40,10 @@ One concern per PR. Keep PRs small enough to review in one sitting.
 [Semantic Versioning](https://semver.org/), derived from the commits merged into `main`:
 
 | Commits since last release | Bump (≥ 1.0.0) | Bump (0.x) |
-|---|---|---|
-| `fix:`, `perf:` | patch | patch |
-| `feat:` | minor | minor |
-| breaking change | major | minor |
+| -------------------------- | -------------- | ---------- |
+| `fix:`, `perf:`            | patch          | patch      |
+| `feat:`                    | minor          | minor      |
+| breaking change            | major          | minor      |
 
 ## Releases
 
@@ -58,23 +58,35 @@ Handled by [release-please](https://github.com/googleapis/release-please) on `ma
 
 ## Development setup
 
-Requirements: Node.js (current LTS), pnpm, Docker.
+Requirements: Docker (with Compose).
 
 ```bash
-pnpm install
-pnpm dev              # server + admin + postgres
-pnpm test             # unit + integration (Testcontainers)
-pnpm test:e2e         # Playwright
-pnpm lint && pnpm typecheck
+docker compose -f compose.dev.yml up   # postgres + server + admin (hot reload) + caddy (`pnpm dev` does the same)
 ```
 
-> The workspace is being bootstrapped; these commands land with the first milestone.
+Then open <http://site.localhost:8080> (a seeded dev site) and the admin at <http://localhost:8080>.
+The seed also creates a dev admin, `admin@example.com` / `lithocms-dev`, owner of the dev site.
+Postgres is on `127.0.0.1:5432` (owner `lithocms_owner`/`owner`, runtime `lithocms_app`/`app`).
+Reset everything with `docker compose -f compose.dev.yml down -v`.
+
+Tests and tooling run in a throwaway container (`tools` service), so nothing is installed on the
+host; the test suite gets its own in-memory Postgres:
+
+```bash
+docker compose -f compose.dev.yml run --rm tools sh -c "pnpm lint && pnpm typecheck && pnpm test"
+docker compose -f compose.dev.yml run --rm tools pnpm format
+docker compose -f compose.dev.yml run --rm tools pnpm db:generate   # migration from schema changes
+docker compose -f compose.dev.yml rm -sf test-postgres              # stop the test database
+```
+
+With Node 26 and pnpm 12 on the host, `pnpm install && pnpm test` also works
+(the suite then starts its own Postgres with Testcontainers).
 
 ## Pull request checklist
 
 - [ ] Title follows Conventional Commits
 - [ ] Tests added or updated (tenant-isolation tests for any tenant table or MCP tool)
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` pass locally
+- [ ] `pnpm lint && pnpm typecheck && pnpm test` pass (in the `tools` container or on the host)
 - [ ] New runtime dependency? One-line justification in the PR description
       (what it does, why we need it, maintenance status)
 - [ ] User-facing strings go through i18n (`en` and `tr`)

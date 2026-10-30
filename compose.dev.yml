@@ -1,0 +1,139 @@
+# Local development stack: `pnpm dev`, then open http://site.localhost:8080 and
+# http://localhost:8080 (admin, admin@example.com / lithocms-dev). Sources are mounted; the server
+# restarts and the admin reloads on change.
+# Outgoing mail is caught by Mailpit: http://localhost:8025.
+# Checks and other tooling run in a throwaway container, nothing is installed on the host:
+#   docker compose -f compose.dev.yml run --rm tools pnpm lint
+#   docker compose -f compose.dev.yml run --rm tools sh -c "pnpm typecheck && pnpm test"
+name: lithocms-dev
+
+x-node-modules: &node-modules
+  - .:/src
+  - pnpm-store:/pnpm-store
+  # Linux node_modules live in volumes so they never mix with the host's.
+  - nm-root:/src/node_modules
+  - nm-core:/src/packages/core/node_modules
+  - nm-content-format:/src/packages/content-format/node_modules
+  - nm-theme-engine:/src/packages/theme-engine/node_modules
+  - nm-mcp:/src/packages/mcp/node_modules
+  - nm-server:/src/apps/server/node_modules
+  - nm-admin:/src/apps/admin/node_modules
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lithocms
+      LITHO_DB_OWNER_PASSWORD: owner
+      LITHO_DB_APP_PASSWORD: app
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./deploy/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
+    ports: ['127.0.0.1:5432:5432']
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres', '-d', 'lithocms']
+      interval: 2s
+      retries: 30
+
+  app:
+    image: node:26-slim
+    working_dir: /src
+    command: >
+      sh -c "npm install -g --silent pnpm@12.16.1 &&
+             pnpm install --frozen-lockfile --store-dir /pnpm-store &&
+             pnpm -C apps/server exec tsx --conditions=@lithocms/source src/dev-seed.ts &&
+             pnpm -C apps/server dev"
+    environment:
+      DATABASE_URL: postgres://lithocms_app:app@postgres:5432/lithocms
+      DATABASE_OWNER_URL: postgres://lithocms_owner:owner@postgres:5432/lithocms
+      # Loopback, so OAuth (MCP connectors) works without TLS in dev.
+      ADMIN_URL: http://localhost:8080
+      AUTH_SECRET: dev-only-secret-dev-only-secret-dev-only
+      DEV_SITE_DOMAIN: site.localhost
+      MEDIA_DIR: /src/.dev-media
+      CACHE_DIR: /src/.dev-cache
+      THEMES_DIR: /src/themes
+      THEME_STORE_DIR: /src/.dev-themes
+      SMTP_URL: smtp://mailpit:1025
+    volumes: *node-modules
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/healthz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 3s
+      retries: 100
+    depends_on:
+      postgres: { condition: service_healthy }
+      mailpit: { condition: service_started }
+
+  # The admin SPA with hot reload; the app container installs the dependencies first.
+  admin:
+    image: node:26-slim
+    working_dir: /src
+    command: sh -c "npm install -g --silent pnpm@12.16.1 && pnpm -C apps/admin dev"
+    volumes: *node-modules
+    depends_on:
+      app: { condition: service_healthy }
+
+  # One-off commands (lint, typecheck, tests, drizzle-kit): `run --rm tools <command>`.
+  tools:
+    image: node:26-slim
+    profiles: [tools]
+    working_dir: /src
+    entrypoint:
+      - sh
+      - -c
+      - npm install -g --silent pnpm@12.16.1 && pnpm install --frozen-lockfile --store-dir /pnpm-store --reporter silent && exec "$$@"
+      - tools
+    environment:
+      TEST_POSTGRES_URL: postgres://postgres:postgres@test-postgres:5432/lithocms
+      # Same store for `pnpm add` as for the install above.
+      pnpm_config_store_dir: /pnpm-store
+    volumes: *node-modules
+    depends_on:
+      test-postgres: { condition: service_healthy }
+
+  # Throwaway Postgres for the test suite (in memory, gone with `down`).
+  test-postgres:
+    image: postgres:18-alpine
+    profiles: [tools]
+    command: ['-c', 'max_connections=1000', '-c', 'fsync=off']
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lithocms
+      LITHO_DB_OWNER_PASSWORD: owner
+      LITHO_DB_APP_PASSWORD: app
+    tmpfs: [/var/lib/postgresql]
+    volumes:
+      - ./deploy/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres', '-d', 'lithocms']
+      interval: 2s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:v1.29
+    ports: ['127.0.0.1:8025:8025']
+
+  caddy:
+    image: caddy:2-alpine
+    ports: ['127.0.0.1:8080:80']
+    volumes:
+      - ./deploy/dev/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on: [app, admin]
+
+volumes:
+  pgdata:
+  pnpm-store:
+  nm-root:
+  nm-core:
+  nm-content-format:
+  nm-theme-engine:
+  nm-mcp:
+  nm-server:
+  nm-admin:

@@ -1,0 +1,36 @@
+{%- assign s = section.settings -%}
+{%- if s.heading != blank -%}
+<section class="block facts" id="intro">
+  <div class="facts-top rise">
+    <h2 class="head">{{ s.heading }}</h2>
+    {%- if s.note != blank -%}<p class="facts-note">{{ s.note }}</p>{%- endif -%}
+  </div>
+  {%- if section.blocks.size > 0 -%}
+    <dl class="facts-row">
+      {%- for b in section.blocks -%}
+        <div class="rise"><dt>{{ b.settings.value }}</dt><dd>{{ b.settings.label }}</dd></div>
+      {%- endfor -%}
+    </dl>
+  {%- endif -%}
+  {%- if s.image -%}
+    <figure class="facts-figure rise">{{ s.image | image_tag: widths: "600,900,1200", sizes: "(min-width: 900px) 40vw, 100vw" }}</figure>
+  {%- endif -%}
+</section>
+{%- endif -%}
+{% schema %}
+{
+  "name": { "tr": "Kısa tanıtım ve rakamlar", "en": "Intro and facts" },
+  "settings": [
+    { "id": "heading", "type": "text", "label": { "tr": "Başlık", "en": "Heading" } },
+    { "id": "note", "type": "textarea", "label": { "tr": "Kısa metin", "en": "Short text" } },
+    { "id": "image", "type": "image", "label": { "tr": "Fotoğraf", "en": "Picture" } }
+  ],
+  "blocks": [
+    { "type": "fact", "name": { "tr": "Bilgi", "en": "Fact" }, "settings": [
+      { "id": "value", "type": "text", "label": { "tr": "Değer (ör. 8 kişi)", "en": "Value (e.g. 8 people)" } },
+      { "id": "label", "type": "text", "label": { "tr": "Açıklama", "en": "Explanation" } }
+    ] }
+  ],
+  "max_blocks": 4
+}
+{% endschema %}

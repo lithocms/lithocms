@@ -1,0 +1,1045 @@
+import {
+  cssVariables,
+  escapeHtml,
+  safe,
+  stripHtml,
+  type RenderHooks,
+  type SectionSchema,
+  type Setting,
+  type ThemeEngine,
+  type ThemeImage,
+  type ThemeManifest,
+} from '@lithocms/theme-engine';
+import { and, asc, count, desc, eq, inArray, like, or, sql, type SQL } from 'drizzle-orm';
+import type { PostRow } from '../content/posts.js';
+import type { Doc } from '@lithocms/content-format';
+import type { Term } from '../content/terms.js';
+import { entriesOf, listCollections } from '../content/collections.js';
+import { storedFieldValue, type Reference } from '../content/fields.js';
+import { formToken, listForms, renderForm } from '../content/forms.js';
+import { flatten, listMenus } from '../content/menus.js';
+import { termFields } from '../content/terms.js';
+import { hitRedirect } from '../content/redirects.js';
+import { cacheVersion } from './cache.js';
+import { renderContent } from '../content/posts.js';
+import { enabledSlots } from '../content/slots.js';
+import {
+  effectiveSection,
+  effectiveSettings,
+  loadThemeSettings,
+  type StaticSection,
+} from '../themes/settings.js';
+import type { Tx } from '../db/client.js';
+import {
+  collectionEntries,
+  posts,
+  postTerms,
+  terms,
+  users,
+  type FieldDef,
+  type MenuItem,
+} from '../db/schema.js';
+import { mediaByIds, mediaUrl, type Media } from '../media/media.js';
+import { paginatedUrl, splitPagination } from './permalinks.js';
+import {
+  isLive,
+  loadPublicSite,
+  postUrls,
+  resolvePath,
+  termUrl,
+  type PublicSite,
+  type Resolved,
+} from './resolve.js';
+
+/** A loaded theme version, ready to render. */
+export interface PublicTheme {
+  /** `themes.id`: the site's settings for this theme are stored under it. */
+  themeId: string;
+  engine: ThemeEngine;
+  manifest: ThemeManifest;
+  /** Fingerprinted URL of a file in the theme's `assets/`. */
+  assetUrl(path: string): string;
+}
+
+export interface PublicRequest {
+  path: string;
+  /** `?s=` on the home URL. */
+  search?: string;
+  /** Scheme and primary host, e.g. `https://example.com`. */
+  origin: string;
+  /** Signs form tokens (time trap). */
+  secret: string;
+  /** Result of a form post, shown in that form after the redirect back. */
+  formStatus?: { key: string; status: 'sent' | 'error' };
+  /** Added to `<script>` tags in slots (admin-only HTML) so the CSP lets them run. */
+  scriptNonce?: string;
+}
+
+export type PublicResponse =
+  | {
+      status: 200 | 404 | 410;
+      html: string;
+      /** For the page cache: what the page shows, and the cache version it was rendered at. */
+      cache: { tags: string[]; version: number };
+    }
+  /** `location` is a `/path` on this site or, for admin-made redirects, an absolute URL. */
+  | { status: 301 | 302; location: string };
+
+const DEFAULT_PAGE_SIZE = 10;
+const RTL = ['ar', 'he', 'fa', 'ur'];
+const STRINGS = {
+  tr: { page: 'Sayfa', search: 'Arama', notFound: 'Sayfa bulunamadı' },
+  en: { page: 'Page', search: 'Search', notFound: 'Page not found' },
+};
+
+type Scope = Record<string, unknown>;
+
+interface Seo {
+  title: string;
+  description: string;
+  type: 'website' | 'article';
+  image: Media | undefined;
+  noindex: boolean;
+  canonical?: string;
+  jsonLd?: Record<string, unknown>;
+}
+
+interface Page {
+  template: string;
+  pageType: string;
+  scope: Scope;
+  seo: Seo;
+}
+
+/** Renders a public URL of a site with its theme. Runs inside `withSite`. */
+export async function renderPublic(
+  tx: Tx,
+  siteId: string,
+  theme: PublicTheme,
+  req: PublicRequest,
+): Promise<PublicResponse> {
+  // Read before any content, so a write committed during this render shows as a new version.
+  const version = await cacheVersion(tx, siteId);
+  const site = await loadPublicSite(tx, siteId);
+  // Redirects come first: an admin may point a live URL elsewhere.
+  const redirect = await hitRedirect(tx, siteId, req.path);
+  if (redirect && redirect.code !== 410) {
+    return { status: redirect.code as 301 | 302, location: redirect.to };
+  }
+  const resolved: Resolved = redirect
+    ? { type: 'not_found' }
+    : await resolvePath(tx, site, req.path, req.search);
+  if (resolved.type === 'redirect') return { status: 301, location: resolved.location };
+
+  const categories = await categoryTree(tx, site);
+  const tags = new Set<string>();
+  const ctx: Ctx = { tx, site, theme, req, categories, tags };
+  const page = (await buildPage(ctx, resolved)) ?? notFound(site);
+  // The site asks search engines to stay away (robots.txt says so too).
+  if (site.settings.search_engines === false) page.seo.noindex = true;
+  const status = page.pageType !== '404' ? 200 : redirect ? 410 : 404;
+
+  const [logo] = await images(tx, site.id, [setting(site, 'logo')]);
+  const [icon] = await images(tx, site.id, [setting(site, 'icon')]);
+  const stored = await loadThemeSettings(tx, site.id, theme.themeId);
+  const defs = theme.manifest.settings ?? [];
+  const settings = effectiveSettings(defs, stored.values);
+  const staticSections = new Map(
+    await Promise.all(
+      Object.entries(theme.engine.sections).map(
+        async ([name, schema]) =>
+          [name, await sectionScope(ctx, schema, stored.sections[name])] as const,
+      ),
+    ),
+  );
+  const canonical = page.seo.canonical ?? req.origin + req.path;
+  const lazy = {
+    categories: [categories.tags, { top: categories.top, all: categories.all }],
+    menus: await menuScope(ctx),
+    collections: await collectionScope(ctx),
+  } satisfies Record<string, [string[], unknown]>;
+  const scope: Scope = {
+    site: {
+      name: site.name,
+      tagline: setting(site, 'tagline') ?? '',
+      url: req.origin,
+      locale: site.locale,
+      logo: logo ? themeImage(logo) : null,
+      social: socialLinks(site),
+      language_direction: RTL.includes(site.locale.slice(0, 2)) ? 'rtl' : 'ltr',
+    },
+    theme: {
+      settings: await settingValues(ctx, defs, settings),
+      tokens: theme.manifest.tokens ?? {},
+      css_variables: safe(cssVariables(withSettingTokens(theme.manifest, settings))),
+    },
+    request: { path: req.path, page_type: page.pageType, query: req.search ?? '' },
+
+    seo: {
+      title: page.seo.title,
+      description: page.seo.description,
+      canonical,
+      noindex: page.seo.noindex,
+    },
+    ...page.scope,
+  };
+  track(scope, tags, lazy);
+  const seoImage = page.seo.image ?? logo;
+  const slotHtml = await enabledSlots(tx, site.id);
+  const siteForms = await listForms(tx, site.id);
+  const html = await theme.engine.render({
+    template: page.template,
+    scope,
+    locale: site.locale,
+    timezone: site.timezone,
+    hooks: {
+      assetUrl: (path) => theme.assetUrl(path),
+      headExtras: () =>
+        `<link rel="alternate" type="application/rss+xml" title="${escapeHtml(site.name)}" href="${escapeHtml(req.origin)}/feed/">` +
+        (icon
+          ? `<link rel="icon" type="${escapeHtml(icon.mime)}" href="${escapeHtml(mediaUrl(icon.path))}">`
+          : ''),
+      bodyExtras: () => '',
+      seo: () =>
+        seoTags(site, { ...page.seo, image: seoImage }, canonical, req.origin, status !== 200),
+      // TODO(phase-3): core-rendered comment form.
+      commentForm: () => '',
+      form: (key) => {
+        tags.add('forms');
+        const form = siteForms.find((f) => f.key === key);
+        if (!form) return '';
+        const status = req.formStatus?.key === key ? req.formStatus.status : undefined;
+        return renderForm(form, {
+          locale: site.locale,
+          token: formToken(req.secret, { siteId: site.id, key }),
+          status,
+        });
+      },
+      slot: (key) => {
+        tags.add('slots');
+        const html = slotHtml.get(key) ?? '';
+        // Ours comes first, and the first of duplicate attributes wins.
+        return req.scriptNonce
+          ? html.replace(/<script\b/gi, `<script nonce="${escapeHtml(req.scriptNonce)}"`)
+          : html;
+      },
+      section: (name) => staticSections.get(name),
+    } satisfies RenderHooks,
+  });
+  return { status, html, cache: { tags: [...tags], version } };
+}
+
+/**
+ * Adds scope entries that tag the page only when a template reads them, so a theme that never
+ * shows categories is not purged by every post write. (Spreading `scope` would read them all.)
+ */
+function track(scope: Scope, tags: Set<string>, entries: Record<string, [string[], unknown]>) {
+  for (const [key, [entryTags, value]] of Object.entries(entries)) {
+    Object.defineProperty(scope, key, {
+      enumerable: true,
+      get() {
+        for (const t of entryTags) tags.add(t);
+        return value;
+      },
+    });
+  }
+}
+
+interface Ctx {
+  tx: Tx;
+  site: PublicSite;
+  theme: PublicTheme;
+  req: PublicRequest;
+  categories: CategoryTree;
+  /** Page cache tags of what this page shows. */
+  tags: Set<string>;
+}
+
+async function buildPage(ctx: Ctx, resolved: Resolved): Promise<Page | undefined> {
+  const { site } = ctx;
+  const tagline = setting(site, 'tagline') ?? '';
+  switch (resolved.type) {
+    case 'index': {
+      const list = await listing(ctx, 'index', resolved.page);
+      if (!list) return undefined;
+      return {
+        template: 'index',
+        pageType: 'index',
+        scope: list,
+        seo: {
+          title: paged(site, tagline ? `${site.name} – ${tagline}` : site.name, resolved.page),
+          description: tagline,
+          type: 'website',
+          image: undefined,
+          noindex: false,
+          jsonLd: { '@type': 'WebSite', name: site.name, url: ctx.req.origin },
+        },
+      };
+    }
+    case 'search': {
+      const found = await searchPosts(ctx, resolved.query, resolved.page);
+      if (!found) return undefined;
+      return {
+        template: 'search',
+        pageType: 'search',
+        scope: {
+          posts: found.posts,
+          search: { terms: resolved.query, results: found.posts, results_count: found.total },
+          paginate: found.paginate,
+        },
+        seo: {
+          title: `${strings(site).search}: ${resolved.query} – ${site.name}`,
+          description: '',
+          type: 'website',
+          image: undefined,
+          noindex: true,
+        },
+      };
+    }
+    case 'category':
+    case 'tag': {
+      const node =
+        resolved.type === 'category'
+          ? ctx.categories.byId.get(resolved.term.id)!
+          : (await termNodes(ctx.tx, site, [resolved.term], ctx.tags)).get(resolved.term.id)!;
+      const list = await listing(ctx, resolved.type, resolved.page, inTerm(ctx.tx, resolved.term));
+      if (!list) return undefined;
+      return {
+        template: resolved.type,
+        pageType: resolved.type,
+        scope: { ...list, term: node },
+        seo: {
+          title: paged(site, `${resolved.term.name} – ${site.name}`, resolved.page),
+          description: resolved.term.description || tagline,
+          type: 'website',
+          image: undefined,
+          noindex: false,
+        },
+      };
+    }
+    case 'archive': {
+      const { year, month } = resolved;
+      const local = (part: 'year' | 'month') =>
+        sql`extract(${sql.raw(part)} from ${posts.publishedAt} at time zone ${site.timezone})`;
+      const where = and(
+        sql`${local('year')} = ${year}`,
+        month ? sql`${local('month')} = ${month}` : undefined,
+      );
+      const list = await listing(ctx, 'archive', resolved.page, where);
+      if (!list) return undefined;
+      const label = month
+        ? new Intl.DateTimeFormat(site.locale, { year: 'numeric', month: 'long' }).format(
+            new Date(Date.UTC(year, month - 1, 15)),
+          )
+        : String(year);
+      return {
+        template: 'archive',
+        pageType: 'archive',
+        scope: { ...list, archive: { year, month } },
+        seo: {
+          title: paged(site, `${label} – ${site.name}`, resolved.page),
+          description: '',
+          type: 'website',
+          image: undefined,
+          noindex: false,
+        },
+      };
+    }
+    case 'post':
+    case 'page': {
+      const row = resolved.post;
+      const [object] = await postObjects(ctx, [row]);
+      const seo: Seo = {
+        title: row.seo.title || `${row.title} – ${site.name}`,
+        description: row.seo.description || plainExcerpt(row, 30),
+        type: resolved.type === 'post' ? 'article' : 'website',
+        image: (await images(ctx.tx, site.id, [row.seo.ogImageId, row.featuredMediaId]))[0],
+        noindex: row.seo.noindex === true,
+        canonical: row.seo.canonical,
+      };
+      if (resolved.type === 'post') {
+        seo.jsonLd = {
+          '@type': 'BlogPosting',
+          headline: row.title,
+          datePublished: row.publishedAt?.toISOString(),
+          dateModified: row.updatedAt.toISOString(),
+          author: { '@type': 'Person', name: (object!.author as { name: string }).name },
+          url: ctx.req.origin + (object!.url as string),
+        };
+        return { template: 'post', pageType: 'post', scope: { post: object }, seo };
+      }
+      return {
+        template: row.template ? `page.${row.template}` : 'page',
+        pageType: 'page',
+        scope: { page: { ...object, ...(await pageExtras(ctx, row)) } },
+        seo,
+      };
+    }
+    case 'not_found':
+      return undefined;
+  }
+}
+
+function notFound(site: PublicSite): Page {
+  return {
+    template: '404',
+    pageType: '404',
+    scope: {},
+    seo: {
+      title: `${strings(site).notFound} – ${site.name}`,
+      description: '',
+      type: 'website',
+      image: undefined,
+      noindex: true,
+    },
+  };
+}
+
+// --- listings -------------------------------------------------------------------------------
+
+async function listing(ctx: Ctx, template: string, page: number, where?: SQL) {
+  const { tx, site, theme } = ctx;
+  ctx.tags.add('lists');
+  const size = theme.engine.pageSize(template) ?? pageSizeSetting(site);
+  const filter = and(eq(posts.siteId, site.id), eq(posts.type, 'post'), isLive(), where);
+  const [{ total } = { total: 0 }] = await tx.select({ total: count() }).from(posts).where(filter);
+  const pages = Math.max(1, Math.ceil(total / size));
+  if (page > pages) return undefined;
+  const rows = await tx
+    .select()
+    .from(posts)
+    .where(filter)
+    .orderBy(desc(posts.publishedAt), desc(posts.id))
+    .limit(size)
+    .offset((page - 1) * size);
+  return { posts: await postObjects(ctx, rows), paginate: paginate(ctx, page, pages) };
+}
+
+/** Live posts and pages matching `query` (web search syntax), best matches first. */
+async function searchPosts(ctx: Ctx, query: string, page: number) {
+  const { tx, site, theme } = ctx;
+  const size = theme.engine.pageSize('search') ?? pageSizeSetting(site);
+  const tsquery = sql`websearch_to_tsquery(litho_search_config(${site.locale}), ${query})`;
+  const filter = and(eq(posts.siteId, site.id), isLive(), sql`${posts.search} @@ ${tsquery}`);
+  const [{ total } = { total: 0 }] = query.trim()
+    ? await tx.select({ total: count() }).from(posts).where(filter)
+    : [];
+  const pages = Math.max(1, Math.ceil(total / size));
+  if (page > pages) return undefined;
+  const rows = total
+    ? await tx
+        .select()
+        .from(posts)
+        .where(filter)
+        .orderBy(
+          desc(sql`ts_rank_cd(${posts.search}, ${tsquery})`),
+          desc(posts.publishedAt),
+          desc(posts.id),
+        )
+        .limit(size)
+        .offset((page - 1) * size)
+    : [];
+  return {
+    posts: await postObjects(ctx, rows),
+    total,
+    paginate: paginate(ctx, page, pages, `?s=${encodeURIComponent(query)}`),
+  };
+}
+
+/** Posts in a tag, or in a category or any of its subcategories (like WordPress). */
+function inTerm(tx: Tx, term: Term): SQL {
+  const matching =
+    term.taxonomy === 'tag'
+      ? eq(terms.id, term.id)
+      : or(
+          eq(terms.id, term.id),
+          and(
+            eq(terms.taxonomy, 'category'),
+            like(terms.path, `${term.path.replace(/[\\%_]/g, '\\$&')}/%`),
+          ),
+        );
+  return inArray(
+    posts.id,
+    tx
+      .select({ id: postTerms.postId })
+      .from(postTerms)
+      .innerJoin(terms, eq(terms.id, postTerms.termId))
+      .where(matching),
+  );
+}
+
+function paginate(ctx: Ctx, current: number, pages: number, query = '') {
+  const { site, req } = ctx;
+  const [base] = splitPagination(site.permalinks, req.path);
+  const url = (n: number) => paginatedUrl(site.permalinks, base, n) + query;
+  // First, last and two around the current page; gaps become an ellipsis.
+  const shown = [
+    ...new Set([1, current - 2, current - 1, current, current + 1, current + 2, pages]),
+  ]
+    .filter((n) => n >= 1 && n <= pages)
+    .sort((a, b) => a - b);
+  const parts: { title: string; url: string | null; is_link: boolean }[] = [];
+  for (const [i, n] of shown.entries()) {
+    if (i > 0 && n - shown[i - 1]! > 1) parts.push({ title: '…', url: null, is_link: false });
+    parts.push({ title: String(n), url: url(n), is_link: n !== current });
+  }
+  return {
+    current_page: current,
+    pages,
+    previous: current > 1 ? { url: url(current - 1) } : null,
+    next: current < pages ? { url: url(current + 1) } : null,
+    parts,
+  };
+}
+
+// --- objects --------------------------------------------------------------------------------
+
+async function postObjects(ctx: Ctx, rows: PostRow[]): Promise<Scope[]> {
+  if (!rows.length) return [];
+  for (const r of rows) ctx.tags.add(`post:${r.id}`);
+  const { tx, site } = ctx;
+  const ids = rows.map((r) => r.id);
+  const [urls, authors, media, links] = await Promise.all([
+    postUrls(tx, site, rows),
+    tx
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(inArray(users.id, [...new Set(rows.map((r) => r.authorId))])),
+    mediaByIds(
+      tx,
+      site.id,
+      rows.flatMap((r) => (r.featuredMediaId ? [r.featuredMediaId] : [])),
+    ),
+    tx
+      .select({ postId: postTerms.postId, isPrimary: postTerms.isPrimary, term: terms })
+      .from(postTerms)
+      .innerJoin(terms, eq(terms.id, postTerms.termId))
+      .where(inArray(postTerms.postId, ids))
+      .orderBy(asc(terms.name)),
+  ]);
+  const authorName = new Map(authors.map((a) => [a.id, a.name]));
+  const tags = await termNodes(
+    tx,
+    site,
+    links.filter((l) => l.term.taxonomy === 'tag').map((l) => l.term),
+    ctx.tags,
+  );
+  const nodeOf = (term: Term) =>
+    term.taxonomy === 'category' ? ctx.categories.byId.get(term.id) : tags.get(term.id);
+
+  return rows.map((row) => {
+    const own = links.filter((l) => l.postId === row.id);
+    const categories = own.filter((l) => l.term.taxonomy === 'category');
+    const primary = categories.find((l) => l.isPrimary) ?? categories[0];
+    const image = row.featuredMediaId ? media.get(row.featuredMediaId) : undefined;
+    return {
+      id: row.id,
+      title: row.title,
+      url: urls.get(row.id) ?? '/',
+      excerpt: row.excerpt ? safe(escapeHtml(row.excerpt)) : safe(derivedExcerpt(row, 55)),
+      content: safe(row.contentHtml),
+      published_at: row.publishedAt?.toISOString() ?? null,
+      updated_at: row.updatedAt.toISOString(),
+      author: { name: authorName.get(row.authorId) ?? '' },
+      featured_image: image ? themeImage(image) : null,
+      categories: categories.map((l) => nodeOf(l.term)),
+      primary_category: primary ? nodeOf(primary.term) : null,
+      tags: own.filter((l) => l.term.taxonomy === 'tag').map((l) => nodeOf(l.term)),
+      comment_count: row.commentCount,
+      comments_open: row.commentsOpen,
+      // TODO(phase-3): approved comments.
+      comments: [],
+      reading_time: Math.max(1, Math.ceil(words(row.contentHtml) / 200)),
+      seo: { title: row.seo.title ?? '', description: row.seo.description ?? '' },
+    };
+  });
+}
+
+async function pageExtras(ctx: Ctx, row: PostRow): Promise<Scope> {
+  const { tx, site } = ctx;
+  ctx.tags.add('pages');
+  const live = and(eq(posts.siteId, site.id), eq(posts.type, 'page'), isLive());
+  const [parents, children] = await Promise.all([
+    row.parentId
+      ? tx
+          .select()
+          .from(posts)
+          .where(and(live, eq(posts.id, row.parentId)))
+      : [],
+    tx
+      .select()
+      .from(posts)
+      .where(and(live, eq(posts.parentId, row.id)))
+      .orderBy(asc(posts.title)),
+  ]);
+  const urls = await postUrls(tx, site, [...parents, ...children]);
+  const link = (p: PostRow) => ({ title: p.title, url: urls.get(p.id) });
+  return {
+    parent: parents[0] ? link(parents[0]) : null,
+    children: children.map(link),
+    sections: (
+      await Promise.all(
+        (row.sections ?? []).map(async (s) => {
+          const schema = ctx.theme.engine.sections[s.type];
+          return schema ? [{ type: s.type, ...(await sectionScope(ctx, schema, s)) }] : [];
+        }),
+      )
+    ).flat(),
+  };
+}
+
+/** Color and font settings named like a token override it (customizer). */
+function withSettingTokens(
+  manifest: ThemeManifest,
+  settings: Record<string, unknown>,
+): Pick<ThemeManifest, 'tokens' | 'dark_tokens'> {
+  const tokens = { ...manifest.tokens };
+  for (const def of manifest.settings ?? []) {
+    const value = settings[def.id];
+    if (typeof value !== 'string') continue;
+    const group = def.type === 'color' ? 'colors' : def.type === 'font' ? 'fonts' : undefined;
+    if (group && tokens[group] && def.id in tokens[group]) {
+      tokens[group] = { ...tokens[group], [def.id]: value };
+    }
+  }
+  return { tokens, dark_tokens: manifest.dark_tokens };
+}
+
+/** Effective setting values as templates see them: images and rich text resolved. */
+async function settingValues(
+  ctx: Ctx,
+  defs: Setting[],
+  values: Record<string, unknown>,
+): Promise<Scope> {
+  const imageIds = defs.filter((d) => d.type === 'image').map((d) => values[d.id] as string | null);
+  const found = new Map((await images(ctx.tx, ctx.site.id, imageIds)).map((m) => [m.id, m]));
+  return Object.fromEntries(
+    await Promise.all(
+      defs.map(async (d): Promise<[string, unknown]> => {
+        const value = values[d.id];
+        if (value === null) return [d.id, null];
+        if (d.type === 'image') {
+          const media = found.get(value as string);
+          return [d.id, media ? themeImage(media) : null];
+        }
+        if (d.type === 'richtext') {
+          return [d.id, safe(await renderContent(ctx.tx, ctx.site.id, value as Doc))];
+        }
+        return [d.id, value];
+      }),
+    ),
+  );
+}
+
+async function sectionScope(
+  ctx: Ctx,
+  schema: SectionSchema,
+  data: Partial<StaticSection> | undefined,
+): Promise<StaticSection> {
+  const section = effectiveSection(schema, data);
+  return {
+    settings: await settingValues(ctx, schema.settings ?? [], section.settings),
+    blocks: await Promise.all(
+      section.blocks.map(async (block) => ({
+        type: block.type,
+        settings: await settingValues(
+          ctx,
+          schema.blocks?.find((b) => b.type === block.type)?.settings ?? [],
+          block.settings,
+        ),
+      })),
+    ),
+  };
+}
+
+interface TermNode {
+  name: string;
+  slug: string;
+  url: string;
+  description: string;
+  meta: Record<string, unknown>;
+  post_count: number;
+  parent: Omit<TermNode, 'parent' | 'children' | 'ancestors'> | null;
+  children: TermNode[];
+  ancestors: Omit<TermNode, 'parent' | 'children' | 'ancestors'>[];
+}
+
+interface CategoryTree {
+  top: TermNode[];
+  all: TermNode[];
+  byId: Map<string, TermNode>;
+  /** Page cache tags of pages that show the tree. */
+  tags: string[];
+}
+
+/**
+ * Every category with its live post count. Children nest downwards; `parent` and `ancestors`
+ * are flat copies, so the graph has no cycles (themes may `json` a term).
+ */
+async function categoryTree(tx: Tx, site: PublicSite): Promise<CategoryTree> {
+  const tags = new Set(['categories']);
+  const rows = await tx
+    .select()
+    .from(terms)
+    .where(and(eq(terms.siteId, site.id), eq(terms.taxonomy, 'category')))
+    .orderBy(asc(terms.sort), asc(terms.name));
+  const nodes = await termNodes(tx, site, rows, tags);
+  const flat = (n: TermNode) => ({
+    name: n.name,
+    slug: n.slug,
+    url: n.url,
+    description: n.description,
+    meta: n.meta,
+    post_count: n.post_count,
+  });
+  const top: TermNode[] = [];
+  for (const row of rows) {
+    const node = nodes.get(row.id)!;
+    const parent = row.parentId ? nodes.get(row.parentId) : undefined;
+    if (parent) {
+      parent.children.push(node);
+      node.parent = flat(parent);
+    } else top.push(node);
+  }
+  const byPath = new Map(rows.map((r) => [r.path, nodes.get(r.id)!]));
+  for (const row of rows) {
+    const parts = row.path.split('/');
+    nodes.get(row.id)!.ancestors = parts
+      .slice(0, -1)
+      .map((_, i) => byPath.get(parts.slice(0, i + 1).join('/')))
+      .filter((n): n is TermNode => n !== undefined)
+      .map(flat);
+  }
+  const all = [...rows].sort((a, b) => a.path.localeCompare(b.path)).map((r) => nodes.get(r.id)!);
+  return { top, all, byId: nodes, tags: [...tags] };
+}
+
+async function termNodes(
+  tx: Tx,
+  site: PublicSite,
+  rows: Term[],
+  tags: Set<string>,
+): Promise<Map<string, TermNode>> {
+  const ids = [...new Set(rows.map((r) => r.id))];
+  const counts = ids.length
+    ? await tx
+        .select({ termId: postTerms.termId, n: count() })
+        .from(postTerms)
+        .innerJoin(posts, eq(posts.id, postTerms.postId))
+        .where(and(inArray(postTerms.termId, ids), isLive()))
+        .groupBy(postTerms.termId)
+    : [];
+  const countOf = new Map(counts.map((c) => [c.termId, c.n]));
+  const fieldsOf = new Map(
+    await Promise.all(
+      [...new Set(rows.map((r) => r.taxonomy))].map(
+        async (t) => [t, await termFields(tx, site.id, t)] as const,
+      ),
+    ),
+  );
+  const meta = await resolveFields(
+    tx,
+    site,
+    rows.map((r) => ({ fields: fieldsOf.get(r.taxonomy)!, data: r.meta })),
+    tags,
+  );
+  return new Map(
+    rows.map((r, i) => [
+      r.id,
+      {
+        name: r.name,
+        slug: r.slug,
+        url: termUrl(site, r),
+        description: r.description,
+        meta: meta[i]!,
+        post_count: countOf.get(r.id) ?? 0,
+        parent: null,
+        children: [],
+        ancestors: [],
+      },
+    ]),
+  );
+}
+
+/** What the theme's image filters take; the WebP variants plus the original. */
+export function themeImage(row: Media): ThemeImage {
+  return {
+    url: mediaUrl(row.path),
+    width: row.width,
+    height: row.height,
+    alt: row.alt,
+    variants: [
+      ...row.variants
+        .filter((v) => v.format === 'webp')
+        .map((v) => ({ width: v.width, url: mediaUrl(v.path) })),
+      { width: row.width, url: mediaUrl(row.path) },
+    ],
+  };
+}
+
+/** `menus.<location>.items[]`: links to unpublished posts or deleted terms are left out. */
+async function menuScope(ctx: Ctx): Promise<[string[], Scope]> {
+  const { tx, site } = ctx;
+  const all = await listMenus(tx, site.id);
+  const items = all.flatMap((m) => flatten(m.items));
+  const refs = (kind: MenuItem['kind']) => [
+    ...new Set(items.filter((i) => i.kind === kind).map((i) => i.ref!)),
+  ];
+  const [postIds, termIds] = [refs('post'), refs('term')];
+  const [live, termRows] = await Promise.all([
+    postIds.length
+      ? tx
+          .select()
+          .from(posts)
+          .where(and(eq(posts.siteId, site.id), inArray(posts.id, postIds), isLive()))
+      : [],
+    termIds.length
+      ? tx
+          .select()
+          .from(terms)
+          .where(and(eq(terms.siteId, site.id), inArray(terms.id, termIds)))
+      : [],
+  ]);
+  const postLinks = await postUrls(tx, site, live);
+  const termLinks = new Map(termRows.map((t) => [t.id, termUrl(site, t)]));
+  const current = safeDecode(ctx.req.path);
+  const build = (list: MenuItem[]): Scope[] =>
+    list.flatMap((item) => {
+      const url =
+        item.kind === 'url'
+          ? item.url
+          : (item.kind === 'post' ? postLinks : termLinks).get(item.ref!);
+      if (!url) return [];
+      const children = build(item.children);
+      const active = url === current || children.some((c) => c.active === true);
+      return [{ label: item.label, url, active, children }];
+    });
+  // Drafts in menus too: they appear once published.
+  return [
+    ['menus', ...postIds.map((id) => `post:${id}`)],
+    Object.fromEntries(all.map((m) => [m.location, { items: build(m.items) }])),
+  ];
+}
+
+function safeDecode(path: string): string {
+  try {
+    return decodeURI(path);
+  } catch {
+    return path;
+  }
+}
+
+const MAX_RENDERED_ENTRIES = 200;
+
+/** `collections.<key>.entries[]`: published entries with their declared fields resolved. */
+async function collectionScope(ctx: Ctx): Promise<[string[], Scope]> {
+  const { tx, site } = ctx;
+  const tags = new Set(['collections']);
+  const list = await listCollections(tx, site.id);
+  const entries = await Promise.all(
+    list.map((c) =>
+      entriesOf(tx, site.id, c, eq(collectionEntries.status, 'published')).limit(
+        MAX_RENDERED_ENTRIES,
+      ),
+    ),
+  );
+  const resolved = await resolveFields(
+    tx,
+    site,
+    list.flatMap((c, i) => entries[i]!.map((e) => ({ fields: c.fields, data: e.data }))),
+    tags,
+  );
+  const result: Scope = {};
+  let n = 0;
+  for (const [i, c] of list.entries()) {
+    result[c.key] = {
+      label: c.label,
+      entries: entries[i]!.map((e) => ({ id: e.id, ...resolved[n++] })),
+    };
+  }
+  return [[...tags], result];
+}
+
+/**
+ * Field values ready for templates: images and links resolved, rich text rendered. Values are
+ * re-checked against the current field types (data is only validated when saved), and values
+ * of removed fields are dropped.
+ */
+async function resolveFields(
+  tx: Tx,
+  site: PublicSite,
+  items: { fields: FieldDef[]; data: Record<string, unknown> }[],
+  /** Gets a `post:<id>` tag for every referenced post. */
+  tags: Set<string>,
+): Promise<Scope[]> {
+  const cleaned = items.map(({ fields, data }) =>
+    fields.map((f) => ({ field: f, value: storedFieldValue(f, data[f.key]) })),
+  );
+  const values = cleaned.flat();
+  const refs = (kind: Reference['kind']) =>
+    values
+      .filter((v) => v.field.type === 'reference' && (v.value as Reference | null)?.kind === kind)
+      .map((v) => (v.value as Reference).id);
+  for (const id of refs('post')) tags.add(`post:${id}`);
+  const imageIds = values
+    .filter((v) => v.field.type === 'image' && v.value !== null)
+    .map((v) => v.value as string);
+  const [imageRows, livePosts, termRows] = await Promise.all([
+    images(tx, site.id, imageIds),
+    refs('post').length
+      ? tx
+          .select()
+          .from(posts)
+          .where(and(eq(posts.siteId, site.id), inArray(posts.id, refs('post')), isLive()))
+      : [],
+    refs('term').length
+      ? tx
+          .select()
+          .from(terms)
+          .where(and(eq(terms.siteId, site.id), inArray(terms.id, refs('term'))))
+      : [],
+  ]);
+  const imageById = new Map(imageRows.map((m) => [m.id, themeImage(m)]));
+  const postLinks = await postUrls(tx, site, livePosts);
+  const linked = new Map<string, Scope>([
+    ...livePosts.map((p): [string, Scope] => [p.id, { title: p.title, url: postLinks.get(p.id) }]),
+    ...termRows.map((t): [string, Scope] => [t.id, { title: t.name, url: termUrl(site, t) }]),
+  ]);
+
+  const field = async (f: FieldDef, value: unknown): Promise<unknown> => {
+    if (value === null) return null;
+    switch (f.type) {
+      case 'richtext':
+        return safe(await renderContent(tx, site.id, value as Doc));
+      case 'image':
+        return imageById.get(value as string) ?? null;
+      case 'reference':
+        return linked.get((value as Reference).id) ?? null;
+      default:
+        return value;
+    }
+  };
+  return Promise.all(
+    cleaned.map(async (vs) =>
+      Object.fromEntries(
+        await Promise.all(
+          vs.map(async (v): Promise<[string, unknown]> => [
+            v.field.key,
+            await field(v.field, v.value),
+          ]),
+        ),
+      ),
+    ),
+  );
+}
+
+// --- SEO ------------------------------------------------------------------------------------
+
+function seoTags(
+  site: PublicSite,
+  seo: Seo,
+  canonical: string,
+  origin: string,
+  notFound: boolean,
+): string {
+  const attr = escapeHtml;
+  const meta = (key: 'name' | 'property', name: string, content: string | undefined) =>
+    content ? `<meta ${key}="${name}" content="${attr(content)}">` : '';
+  const image = seo.image && origin + mediaUrl(seo.image.path);
+  return [
+    `<title>${escapeHtml(seo.title)}</title>`,
+    meta('name', 'description', seo.description),
+    notFound ? '' : `<link rel="canonical" href="${attr(canonical)}">`,
+    seo.noindex ? meta('name', 'robots', 'noindex') : '',
+    meta('property', 'og:site_name', site.name),
+    meta('property', 'og:type', seo.type),
+    meta('property', 'og:title', seo.title),
+    meta('property', 'og:description', seo.description),
+    meta('property', 'og:url', canonical),
+    meta('property', 'og:locale', site.locale.replace('-', '_')),
+    meta('property', 'og:image', image),
+    meta('name', 'twitter:card', image ? 'summary_large_image' : 'summary'),
+    seo.jsonLd
+      ? `<script type="application/ld+json">${scriptJson({
+          '@context': 'https://schema.org',
+          ...seo.jsonLd,
+          ...(image ? { image } : {}),
+        })}</script>`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** JSON that cannot end a `<script>` element. */
+function scriptJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+// --- helpers --------------------------------------------------------------------------------
+
+async function images(
+  tx: Tx,
+  siteId: string,
+  ids: (string | null | undefined)[],
+): Promise<Media[]> {
+  const wanted = ids.filter(
+    (id): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id),
+  );
+  const found = await mediaByIds(tx, siteId, wanted);
+  return wanted.flatMap((id) => found.get(id) ?? []);
+}
+
+function setting(site: PublicSite, key: string): string | undefined {
+  const value = site.settings[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function socialLinks(site: PublicSite): Record<string, string> {
+  const value = site.settings.social;
+  if (typeof value !== 'object' || value === null) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (e): e is [string, string] => typeof e[1] === 'string' && /^https?:\/\//.test(e[1]),
+    ),
+  );
+}
+
+function pageSizeSetting(site: PublicSite): number {
+  const n = Number(site.settings.posts_per_page);
+  return Number.isInteger(n) && n >= 1 && n <= 100 ? n : DEFAULT_PAGE_SIZE;
+}
+
+function strings(site: PublicSite) {
+  return site.locale.startsWith('tr') ? STRINGS.tr : STRINGS.en;
+}
+
+function paged(site: PublicSite, title: string, page: number): string {
+  return page > 1 ? `${title} – ${strings(site).page} ${page}` : title;
+}
+
+function words(html: string): number {
+  return stripHtml(html).split(' ').filter(Boolean).length;
+}
+
+/** First words of the content, as HTML text (entities kept, no tags). */
+function derivedExcerpt(row: PostRow, count: number): string {
+  const all = stripHtml(row.contentHtml).split(' ').filter(Boolean);
+  return all.length > count ? `${all.slice(0, count).join(' ')}…` : all.join(' ');
+}
+
+/** Excerpt as plain text, for meta descriptions (escaped again when output). */
+function plainExcerpt(row: PostRow, count: number): string {
+  if (row.excerpt) return row.excerpt;
+  return derivedExcerpt(row, count)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&amp;/g, '&');
+}

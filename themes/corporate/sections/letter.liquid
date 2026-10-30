@@ -1,0 +1,22 @@
+{%- assign letter = collections.testimonials.entries | first -%}
+{%- if letter -%}
+<section class="block letter" id="letter">
+  <h2 class="visually-hidden">{{ section.settings.heading | default: letter.name }}</h2>
+  <div class="letter-side">
+    {%- if letter.photo -%}{{ letter.photo | image_tag: widths: "240", sizes: "120px", alt: letter.name }}{%- endif -%}
+  </div>
+  <div class="letter-body rise">
+    <p class="letter-open">{{ letter.opening }}</p>
+    <div class="letter-text">{{ letter.text }}</div>
+    <p class="letter-sign"><span>{{ letter.name }}</span>{% if letter.role %}<br>{{ letter.role }}{% endif %}</p>
+  </div>
+</section>
+{%- endif -%}
+{% schema %}
+{
+  "name": { "tr": "Görüş (mektup)", "en": "Testimonial (letter)" },
+  "settings": [
+    { "id": "heading", "type": "text", "label": { "tr": "Erişilebilir başlık", "en": "Accessible heading" } }
+  ]
+}
+{% endschema %}

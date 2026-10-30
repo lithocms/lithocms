@@ -1,0 +1,23 @@
+{%- assign entries = collections.faq.entries -%}
+{%- if entries.size > 0 -%}
+<section class="block faq" id="faq">
+  <h2 class="faq-head rise">{{ section.settings.heading | default: 'FAQ' }}</h2>
+  <div class="faq-list">
+    {%- for q in entries limit: section.settings.limit -%}
+      <details class="rise">
+        <summary>{{ q.question }}</summary>
+        <div class="faq-answer">{{ q.answer }}</div>
+      </details>
+    {%- endfor -%}
+  </div>
+</section>
+{%- endif -%}
+{% schema %}
+{
+  "name": { "tr": "Sık sorulan sorular", "en": "FAQ" },
+  "settings": [
+    { "id": "heading", "type": "text", "default": "SSS", "label": { "tr": "Başlık", "en": "Heading" } },
+    { "id": "limit", "type": "number", "default": 8, "label": { "tr": "En fazla soru", "en": "Most questions" } }
+  ]
+}
+{% endschema %}

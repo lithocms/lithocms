@@ -1,0 +1,22 @@
+# Dev only: plain HTTP on :80 (published as localhost:8080). Production uses on-demand TLS.
+{
+	auto_https off
+}
+
+:80 {
+	# As in production (docs/INSTALL_UPDATE.md); pages and assets go out compressed.
+	encode zstd gzip
+
+	# The admin SPA comes from the Vite dev server (hot reload); its API, MCP and OAuth
+	# discovery from the app.
+	@admin-ui {
+		host localhost
+		not path /api/* /mcp /.well-known/*
+	}
+	handle @admin-ui {
+		reverse_proxy admin:5173
+	}
+	handle {
+		reverse_proxy app:3000
+	}
+}

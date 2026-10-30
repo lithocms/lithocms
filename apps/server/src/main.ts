@@ -1,0 +1,66 @@
+import { loadAdminApp } from './admin-app.js';
+import { createDb, createDiskStore, runMigrations, schema } from '@lithocms/core';
+import { buildApp } from './app.js';
+import { createAuth } from './auth.js';
+import { loadConfig } from './config.js';
+import { installJobs, startJobs } from './jobs.js';
+import { smtpMailer } from './mailer.js';
+import { createPageCache } from './page-cache.js';
+import { createSiteResolver } from './sites.js';
+import { loadBundledThemes } from './themes.js';
+import { pino } from 'pino';
+
+const config = loadConfig();
+
+await runMigrations(config.DATABASE_OWNER_URL);
+const log = pino({ level: config.LOG_LEVEL });
+const owner = createDb(config.DATABASE_OWNER_URL, 1);
+const themes = await loadBundledThemes(
+  config.THEMES_DIR,
+  owner.db,
+  config.DEFAULT_THEME,
+  log,
+  config.THEME_STORE_DIR,
+);
+const appRole = decodeURIComponent(new URL(config.DATABASE_URL).username);
+await installJobs(config.DATABASE_OWNER_URL, owner.db, appRole);
+// Cached pages may point at assets of a theme version this release no longer ships.
+await owner.db.delete(schema.pageCache);
+await owner.pool.end();
+const { db, pool } = createDb(config.DATABASE_URL);
+const cache = config.CACHE_DIR ? createPageCache(config.CACHE_DIR, db) : undefined;
+const mailer = config.SMTP_URL
+  ? smtpMailer(
+      config.SMTP_URL,
+      config.MAIL_FROM ?? `LithoCMS <noreply@${config.ADMIN_URL.hostname}>`,
+    )
+  : null;
+const store = createDiskStore(config.MEDIA_DIR);
+const jobs = await startJobs({ url: config.DATABASE_URL, db, store, mailer, log });
+const app = buildApp({
+  db,
+  sites: await createSiteResolver(db),
+  adminUrl: config.ADMIN_URL,
+  auth: createAuth({ db, adminUrl: config.ADMIN_URL, secret: config.AUTH_SECRET }),
+  secret: config.AUTH_SECRET,
+  store,
+  themes,
+  jobs,
+  mailer,
+  cache,
+  admin: await loadAdminApp(config.ADMIN_DIR),
+  logLevel: config.LOG_LEVEL,
+});
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    app.log.info({ signal }, 'shutting down');
+    void app
+      .close()
+      .then(() => jobs.stop())
+      .then(() => pool.end())
+      .finally(() => process.exit(0));
+  });
+}
+
+await app.listen({ port: config.PORT, host: config.HOST });

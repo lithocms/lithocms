@@ -1,0 +1,36 @@
+{%- assign s = section.settings -%}
+{%- assign name = s.wordmark | default: site.name -%}
+<section class="hero">
+  <div class="hero-top">
+    {%- if s.sentence != blank -%}<p class="hero-sentence">{{ s.sentence }}</p>{%- endif -%}
+    {%- if s.cta_label != blank and s.cta_url != blank -%}<a class="button" href="{{ s.cta_url }}">{{ s.cta_label }}</a>{%- endif -%}
+  </div>
+  <h1 translate="no" class="hero-name display-fit" style="--chars: {{ name.size }}">{{ name }}</h1>
+  <div class="hero-foot">
+    {%- if s.place != blank -%}<p>{{ s.place }}</p>{%- endif -%}
+    {%- if section.blocks.size > 0 -%}
+      <ul class="hero-links">
+        {%- for b in section.blocks -%}<li><a href="{{ b.settings.href }}">{{ b.settings.label }}</a></li>{%- endfor -%}
+      </ul>
+    {%- endif -%}
+  </div>
+</section>
+{% schema %}
+{
+  "name": { "tr": "Açılış", "en": "Hero" },
+  "settings": [
+    { "id": "wordmark", "type": "text", "label": { "tr": "Büyük isim (boşsa site adı)", "en": "Large name (site name if empty)" } },
+    { "id": "sentence", "type": "textarea", "label": { "tr": "Ne yaptığınızı anlatan cümle", "en": "One sentence on what you do" } },
+    { "id": "cta_label", "type": "text", "label": { "tr": "Buton metni", "en": "Button label" } },
+    { "id": "cta_url", "type": "url", "label": { "tr": "Buton adresi", "en": "Button link" } },
+    { "id": "place", "type": "text", "label": { "tr": "Şehir / semt", "en": "City or area" } }
+  ],
+  "blocks": [
+    { "type": "link", "name": { "tr": "Bağlantı", "en": "Link" }, "settings": [
+      { "id": "label", "type": "text", "label": { "tr": "Metin", "en": "Label" } },
+      { "id": "href", "type": "url", "label": { "tr": "Adres", "en": "Link" } }
+    ] }
+  ],
+  "max_blocks": 3
+}
+{% endschema %}

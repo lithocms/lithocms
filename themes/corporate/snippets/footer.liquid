@@ -1,0 +1,41 @@
+<footer class="colophon" id="contact-info">
+  <div class="colophon-grid">
+    <div class="colophon-places">
+      {%- if settings.phone != blank -%}
+        <a href="tel:{{ settings.phone | remove: ' ' }}">{{ settings.phone }}</a>
+      {%- endif -%}
+      {%- if settings.email != blank -%}
+        <a href="mailto:{{ settings.email }}">{{ settings.email }}</a>
+      {%- endif -%}
+      {%- for branch in collections.branches.entries -%}
+        <p class="colophon-branch"><strong>{{ branch.name }}</strong>{% if branch.address %}<br>{{ branch.address | newline_to_br }}{% endif %}{% if branch.phone %}<br><a href="tel:{{ branch.phone | remove: ' ' }}">{{ branch.phone }}</a>{% endif %}</p>
+      {%- else -%}
+        {%- if settings.address != blank -%}<p class="colophon-branch">{{ settings.address | newline_to_br }}</p>{%- endif -%}
+      {%- endfor -%}
+    </div>
+    <div class="colophon-links">
+      {%- for item in menus.footer.items -%}
+        <div>
+          <a class="colophon-head" href="{{ item.url }}">{{ item.label }}</a>
+          {%- if item.children.size > 0 -%}
+            <ul>{%- for child in item.children -%}<li><a href="{{ child.url }}">{{ child.label }}</a></li>{%- endfor -%}</ul>
+          {%- endif -%}
+        </div>
+      {%- endfor -%}
+      {%- if site.social.size > 0 -%}
+        <div>
+          <ul>{%- for link in site.social -%}<li><a href="{{ link[1] }}" rel="me noopener">{{ link[0] | capitalize }}</a></li>{%- endfor -%}</ul>
+        </div>
+      {%- endif -%}
+    </div>
+  </div>
+  {%- if settings.footer_note != blank -%}<p class="colophon-note">{{ settings.footer_note }}</p>{%- endif -%}
+  <p class="colophon-name display-fit" style="--chars: {{ site.name.size }}" aria-hidden="true" translate="no">{{ site.name }}</p>
+  <div class="colophon-legal">
+    <p>© {{ 'now' | date: '%Y' }} {{ site.name }}. {{ 'rights' | t }}</p>
+    <ul>
+      {%- for item in menus.legal.items -%}<li><a href="{{ item.url }}">{{ item.label }}</a></li>{%- endfor -%}
+      <li><a href="#main">{{ 'top' | t }}</a></li>
+    </ul>
+  </div>
+</footer>

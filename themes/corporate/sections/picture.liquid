@@ -1,0 +1,19 @@
+{%- assign s = section.settings -%}
+{%- if s.image -%}
+<section class="picture">
+  <h2 class="visually-hidden">{{ s.caption | default: s.image.alt }}</h2>
+  <figure>
+    {{ s.image | image_tag: widths: "800,1200,1600,2400", sizes: "100vw", class: "picture-img" }}
+    {%- if s.caption != blank -%}<figcaption>{{ s.caption }}</figcaption>{%- endif -%}
+  </figure>
+</section>
+{%- endif -%}
+{% schema %}
+{
+  "name": { "tr": "Tam genişlik fotoğraf", "en": "Full-width picture" },
+  "settings": [
+    { "id": "image", "type": "image", "label": { "tr": "Fotoğraf", "en": "Picture" } },
+    { "id": "caption", "type": "text", "label": { "tr": "Alt yazı", "en": "Caption" } }
+  ]
+}
+{% endschema %}

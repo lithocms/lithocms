@@ -1,0 +1,18 @@
+{%- paginate search.results by 12 -%}
+<section class="block listing">
+  <header class="listing-head">
+    <h1 class="head">{{ 'search' | t }}</h1>
+    <form class="search-form" action="/" method="get" role="search">
+      <label class="visually-hidden" for="q">{{ 'search' | t }}</label>
+      <input id="q" type="search" name="s" value="{{ search.terms }}" placeholder="{{ 'search_placeholder' | t }}">
+      <button class="button" type="submit">{{ 'search' | t }}</button>
+    </form>
+  </header>
+  {%- if search.terms != blank -%}
+    <p class="listing-count">“{{ search.terms }}”: {{ search.results_count }} {{ 'search_results' | t }}</p>
+    {%- if search.results_count == 0 -%}<p class="lead">{{ 'no_results' | t }}</p>{%- endif -%}
+    {% render 'post-rows', list: search.results %}
+    {% render 'pagination', paginate: paginate %}
+  {%- endif -%}
+</section>
+{%- endpaginate -%}

@@ -1,0 +1,8 @@
+<ul class="rows">
+  {%- for p in list -%}
+    <li class="row">
+      <a href="{{ p.url }}">{{ p.title }}</a>
+      <time datetime="{{ p.published_at | date: '%Y-%m-%d' }}">{{ p.published_at | date: 'medium' }}</time>
+    </li>
+  {%- endfor -%}
+</ul>
